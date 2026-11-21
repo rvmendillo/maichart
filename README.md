@@ -29,7 +29,7 @@ An iOS app that turns songs and sheet music into **maimai-style charts for Astro
 * **Hierarchical:** Re:MASTER is laid out first; every lower difficulty keeps a subset of the same moments on the same buttons (verified by tests), simplifying EACH, touch and slides on the way down — so lower charts are direct practice for higher ones. EASY uses only quarter-note positions, BASIC only eighths.
 * **Human-like, not robotic:** melody contour mapped to height on the ring, circle runs for scalar runs, zig-zags and trills for fast alternation, mirrored/moving EACH pairs on accents, phrase echo (repeated music returns mirrored/rotated), seeded randomness (Remix gives a new variation).
 * **Drums + melody:** kick/snare/cymbal hits and melody notes both drive the rhythm; breaks land on crashes/section starts.
-* **maimai tricks:** touch notes on A/B/D/E sensors (with the closing-triangle timer), centre touch holds (`Ch`) during sustains, fireworks, EACH, circle runs; slides kept rare (adjustable).
+* **maimai tricks:** touch notes on A/B/D/E sensors (with the closing-triangle timer), centre touch holds (`Ch`) during sustains, fireworks, EACH, circle runs; slides kept rare (adjustable) — a sustained melody note occasionally becomes a star whose slide stays on its own half of the ring while the other hand keeps tapping.
 * **Playable:** a two-hand simulator (hand speed, travel distance, busy hands during holds/slides) checks and repairs every difficulty; ≤ 2 simultaneous notes; simultaneous holds always have equal length.
 * Options: slides / touch / EACH / BREAK amounts, Re:MASTER density, extra 16th stream fills, mirror.
 

@@ -81,6 +81,33 @@ final class ChartGeneratorTests: XCTestCase {
         XCTAssertLessThanOrEqual(rm.notes.filter { $0.isSlide }.count, 4)
     }
 
+    func testSlidesAreSparseVisibleAndKeptOnMaster() throws {
+        var slidesSeen = 0
+        for seed: UInt64 in 1...6 {
+            for file in ["pop160.mid", "ballad_tempo.mid"] {
+                let set = try generate(file, seed: seed)
+                let re = try XCTUnwrap(set.chart(.remaster)), master = try XCTUnwrap(set.chart(.master))
+                let slides = re.notes.filter { $0.isSlide }
+                slidesSeen += slides.count
+                // focus stays on taps: slides are a small minority of the Re:MASTER objects
+                XCTAssertLessThanOrEqual(Double(slides.count), 0.06 * Double(re.notes.count), "\(file) s\(seed)")
+                // MASTER keeps every slide it shares with Re:MASTER (no slide->hold downgrades at MASTER)
+                let masterByTick = Dictionary(grouping: master.notes, by: { $0.tick })
+                for sl in slides {
+                    if let m = masterByTick[sl.tick] { XCTAssertTrue(m.contains { $0.isSlide }, "\(file) s\(seed) tick \(sl.tick)") }
+                    if case .slide(let b, let segs, let dur) = sl.kind {
+                        XCTAssertGreaterThanOrEqual(dur, ticksPerBeat / 2)
+                        for seg in segs where seg.shape == "-" {
+                            XCTAssertGreaterThanOrEqual(Geometry.distance(b, seg.vertices[0]), 2, "straight slides need >= 2 buttons")
+                        }
+                    }
+                }
+                for d in Difficulty.allCases { XCTAssertTrue(set.reports[d]!.isPlayable, "\(file) s\(seed) \(d)") }
+            }
+        }
+        XCTAssertGreaterThan(slidesSeen, 6, "slides should still appear now and then")
+    }
+
     func testDeterministicAndRemixChanges() throws {
         let a = try generate("pop160.mid", seed: 7).maidata.text()
         let b = try generate("pop160.mid", seed: 7).maidata.text()

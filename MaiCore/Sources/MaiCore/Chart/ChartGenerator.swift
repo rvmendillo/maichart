@@ -385,6 +385,31 @@ public final class ChartGenerator {
                     lastSlideTick = s.tick
                 }
             }
+            // 1b) slide while the other hand keeps tapping: a sustained melody note becomes a star whose
+            //     slide stays on its own side; only placed when one free hand can cover every note inside it
+            if notes.isEmpty && !breakFirst && options.slideAmount > 0 && s.hasMelody && !inRun && melodyLenBeats >= 1.5
+                && s.metric >= 0.55 && s.tick - lastSlideTick >= 16 * ticksPerBeat && sim.hands.allSatisfy({ $0.busyUntil <= t + 0.03 })
+                && rng.chance(options.slideAmount * 0.6) {
+                let halfBeats = max(1, min(4, Int(((melodyLenBeats - 1) * 2).rounded(.down))))
+                let travel = halfBeats * ticksPerBeat / 2
+                let endTick = s.tick + ticksPerBeat + travel
+                var coverable = true
+                var prevT = t
+                var j = i + 1
+                while j < slots.count && slots[j].tick < endTick + ticksPerBeat / 4 {
+                    let wt = time(slots[j].tick)
+                    if wt - prevT < 0.19 { coverable = false; break }
+                    prevT = wt
+                    j += 1
+                }
+                if coverable, let (bs, p) = place([target], at: t) {
+                    notes = [ChartNote(tick: s.tick, kind: .slide(button: bs[0], segments: [sideSlideShape(from: bs[0])], duration: travel))]
+                    angles = [Geometry.buttonAngle(bs[0])]
+                    ends = [time(endTick)]
+                    placement = p
+                    lastSlideTick = s.tick
+                }
+            }
             // 2) centre touch hold during long calm notes
             let sustainBeats = max(s.hasMelody ? min(melodyLenBeats, gapBeats) : 0,
                                    s.metric >= 0.78 ? Double(s.harmonyLength) / Double(ticksPerBeat) : 0)
@@ -532,6 +557,20 @@ public final class ChartGenerator {
         }
     }
 
+    /// A slide that stays on the star's half of the ring (straight chord or short arc), so the other
+    /// hand can keep tapping on the opposite side without crossing.
+    func sideSlideShape(from b: Int) -> SlideSegment {
+        let side = Geometry.isRightSide(b) ? [1, 2, 3, 4] : [5, 6, 7, 8]
+        let targets = side.filter { $0 != b }
+        // favour 90°-135° slides (clearly visible) over tiny 45° flicks
+        let weights = targets.map { c -> Double in [0, 0.25, 0.45, 0.3, 0][Geometry.distance(b, c)] }
+        let c = targets[rng.weightedIndex(weights)]
+        if Geometry.distance(b, c) >= 2 && rng.chance(0.45) {
+            return SlideSegment(shape: "-", vertices: [c])
+        }
+        return SlideSegment(shape: "^", vertices: [c])
+    }
+
     func mirrored(_ n: ChartNote) -> ChartNote {
         var m = n
         switch n.kind {
@@ -598,7 +637,8 @@ public final class ChartGenerator {
                     }
                 case .slide(let b, let segs, let dur):
                     let simple = segs.count == 1 && ["-", ">", "<", "^", "v"].contains(segs[0].shape)
-                    if d >= .expert && simple { break }
+                    if d >= .master { break }
+                    if d == .expert && simple { break }
                     if d == .advanced && segs.count == 1 && ["-", ">", "<"].contains(segs[0].shape) && dur >= ticksPerBeat { break }
                     if d >= .basic {
                         m.kind = .hold(button: b, length: min(2 * ticksPerBeat, ticksPerBeat + dur))
