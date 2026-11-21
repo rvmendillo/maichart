@@ -79,6 +79,89 @@ case "mp3":
         let g = try MP3Decoder.decode(r.mp3, gapless: true)
         print("gapless decode frames \(g.buffer.frameCount) vs naive \(try MP3Decoder.decode(r.mp3).buffer.frameCount), tag=\(g.hasInfoTag)")
     } catch { fail("error: \(error)") }
+case "analyze":
+    // maicli analyze <audio.wav|mp3> [outdir]
+    guard let path = args.popFirst() else { fail("usage: maicli analyze <audio> [outdir]") }
+    let outDir = args.popFirst()
+    do {
+        let url = URL(fileURLWithPath: path)
+        let data = try Data(contentsOf: url)
+        let buf: AudioBuffer
+        if path.lowercased().hasSuffix(".mp3") { buf = try MP3Decoder.decode(MP3Tools.removingInfoFrame(data).data).buffer } else { buf = try WAVFile.read(data: data) }
+        let t0 = Date()
+        var transcription: [BasicPitch.NoteEvent]? = nil
+        if let bpPath = ProcessInfo.processInfo.environment["MAICHART_BP_NOTES"] {
+            // JSON [[startFrame, endFrame, pitch, amplitude], ...] produced by the reference Basic Pitch
+            let arr = try JSONSerialization.jsonObject(with: Data(contentsOf: URL(fileURLWithPath: bpPath))) as! [[Any]]
+            transcription = arr.map { BasicPitch.NoteEvent(startFrame: $0[0] as! Int, endFrame: $0[1] as! Int, pitch: $0[2] as! Int, amplitude: ($0[3] as! NSNumber).doubleValue) }
+        }
+        let a = AudioAnalyzer.analyze(buf, transcription: transcription)
+        print(String(format: "analysed %.1fs audio in %.2fs", buf.duration, Date().timeIntervalSince(t0)))
+        print(String(format: "BPM %.3f firstDownbeat %.4fs meter %d/4 confidence %.2f residual %.1fms segments %d", a.grid.bpm, a.grid.firstDownbeat, a.grid.beatsPerBar, a.grid.confidence, a.grid.residualMs, a.grid.tempo.segments.count))
+        for s in a.grid.tempo.segments.prefix(8) { print(String(format: "  segment beat %.1f bpm %.3f t=%.3f", s.startBeat, s.bpm, s.startTime)) }
+        var kinds: [DrumHit.Kind: Int] = [:]
+        for d in a.drums { kinds[d.kind, default: 0] += 1 }
+        print("drums \(a.drums.count) \(kinds.map { "\($0.key)=\($0.value)" }.sorted()) melody \(a.melody.count) (\(a.melodySource)) sections \(a.sectionStarts)")
+        if ProcessInfo.processInfo.environment["MAICHART_EVENTS"] != nil {
+            for m in a.melody { print(String(format: "EV melody %.3f %d %.2f", a.grid.tempo.time(atBeat: m.beat), m.pitch, m.strength)) }
+            for d in a.drums { print(String(format: "EV drum %.3f %@ %.2f", a.grid.tempo.time(atBeat: d.beat), "\(d.kind)" as NSString, d.strength)) }
+            for h in a.harmony { print(String(format: "EV harm %.3f %d", a.grid.tempo.time(atBeat: h.beat), h.pitch)) }
+        }
+        if let o = outDir {
+            let feats = AudioAnalyzer.features(a, title: url.deletingPathExtension().lastPathComponent, artist: "")
+            let set = ChartGenerator.generate(feats)
+            printChartSet(set)
+            try FileManager.default.createDirectory(atPath: o, withIntermediateDirectories: true)
+            try set.maidata.data().write(to: URL(fileURLWithPath: o).appendingPathComponent("maidata.txt"))
+        }
+    } catch { fail("error: \(error)") }
+case "onsets":
+    guard let path = args.popFirst() else { fail("usage: maicli onsets <wav>") }
+    do {
+        let buf = try WAVFile.read(url: URL(fileURLWithPath: path))
+        let x = DSP.resample(buf.mono(), from: buf.sampleRate, to: AudioAnalyzer.analysisRate)
+        for o in AudioAnalyzer.fineOnsets(x) { print(String(format: "%.5f %.3f", o.time, o.strength)) }
+    } catch { fail("error: \(error)") }
+case "drums":
+    guard let path = args.popFirst() else { fail("usage: maicli drums <wav>") }
+    do {
+        let buf = try WAVFile.read(url: URL(fileURLWithPath: path))
+        let a = AudioAnalyzer.analyze(buf)
+        for d in a.drums { print(String(format: "%.4f %@ %.3f", a.grid.tempo.time(atBeat: d.beat), "\(d.kind)" as NSString, d.strength)) }
+    } catch { fail("error: \(error)") }
+case "drum-templates":
+    // maicli drum-templates <sf2>: prints 96-band mel templates for GM kick/snare/hat/crash
+    guard let sfPath = args.popFirst() else { fail("usage") }
+    do {
+        let sf = try SoundFont(url: URL(fileURLWithPath: sfPath))
+        let fb = DSP.melFilterbank(sampleRate: 22050, nFFT: 2048, nMels: 96, fMin: 30, fMax: 11000)
+        for (name, keys) in [("kick", [36, 35]), ("snare", [38, 40, 39]), ("hat", [42, 44, 46]), ("crash", [49, 57])] {
+            var acc = [Double](repeating: 0, count: 96)
+            for key in keys {
+                for vel in [80, 110] {
+                    let synth = Synthesizer(soundFont: sf, sampleRate: 22050)
+                    synth.reverbEnabled = false; synth.chorusEnabled = false
+                    synth.noteOn(channel: 9, key: key, velocity: vel)
+                    let (l, r) = synth.render(frames: 22050 / 4)
+                    let x = zip(l, r).map { ($0 + $1) / 2 }
+                    let spec = DSP.stft(x, sampleRate: 22050, nFFT: 2048, hop: 256, power: true)
+                    let mel = DSP.applyFilterbank(spec, fb)
+                    for t in 2..<min(mel.count, 9) { for b in 0..<96 { acc[b] += Double(mel[t][b]).squareRoot() } }
+                }
+            }
+            let sum = acc.reduce(0, +)
+            print("    static let \(name): [Float] = [" + acc.map { String(format: "%.5f", $0 / sum) }.joined(separator: ", ") + "]")
+        }
+    } catch { fail("error: \(error)") }
+case "simai-times":
+    // maicli simai-times <maidata.txt> <difficulty 1-6>: absolute audio times of every note
+    guard let path = args.popFirst(), let dn = Int(args.popFirst() ?? "6"), let d = Difficulty(rawValue: dn) else { fail("usage") }
+    do {
+        let m = MaidataFile(text: try String(contentsOfFile: path, encoding: .utf8))
+        guard let body = m.chartBody(d) else { fail("no chart") }
+        let c = try SimaiParser.parse(body)
+        for n in c.notes { print(String(format: "%.5f", n.time + m.first)) }
+    } catch { fail("error: \(error)") }
 case "simai-check":
     guard let path = args.popFirst() else { fail("usage: maicli simai-check <maidata.txt>") }
     do {

@@ -67,7 +67,7 @@ public struct DifficultyProfile {
 /// every lower difficulty is a strict subset of the next higher one.
 public enum RhythmPlanner {
     /// Quantises an arbitrary beat position to the most plausible grid (16ths or triplets).
-    static func quantize(_ beats: [Double]) -> [Double] {
+    static func quantize(_ beats: [Double], fine: Bool = true) -> [Double] {
         guard !beats.isEmpty else { return [] }
         // decide binary vs ternary per beat using the events inside that beat
         var byBeat: [Int: [Double]] = [:]
@@ -75,7 +75,7 @@ public enum RhythmPlanner {
         var mode: [Int: Int] = [:] // 4 = sixteenths, 3 = triplet eighths, 6 = triplet sixteenths, 8 = 32nds
         for (k, list) in byBeat {
             var best = 4, bestErr = Double.infinity
-            for div in [4, 3, 6, 8] {
+            for div in (fine ? [4, 3, 6, 8] : [4, 3]) {
                 var err = 0.0
                 for b in list {
                     let f = (b - Double(k)) * Double(div)
@@ -113,10 +113,11 @@ public enum RhythmPlanner {
 
     public static func buildSlots(_ f: SongFeatures, startBeat: Double = 0) -> [RhythmSlot] {
         let bars = f.bars()
+        let exact = f.source != .audio // symbolic sources are exact; audio timing is noisy
         var slots: [Int: RhythmSlot] = [:]
         func slot(_ tick: Int) -> RhythmSlot { slots[tick] ?? RhythmSlot(tick: tick) }
 
-        let mq = quantize(f.melody.map { $0.beat })
+        let mq = quantize(f.melody.map { $0.beat }, fine: exact)
         for (i, n) in f.melody.enumerated() {
             let t = Int((mq[i] * Double(ticksPerBeat)).rounded())
             if mq[i] < startBeat { continue }
@@ -128,7 +129,7 @@ public enum RhythmPlanner {
             }
             slots[t] = s
         }
-        let dq = quantize(f.drums.map { $0.beat })
+        let dq = quantize(f.drums.map { $0.beat }, fine: exact)
         for (i, d) in f.drums.enumerated() {
             if dq[i] < startBeat { continue }
             let t = Int((dq[i] * Double(ticksPerBeat)).rounded())
@@ -137,7 +138,7 @@ public enum RhythmPlanner {
             s.drumStrength = max(s.drumStrength, d.strength)
             slots[t] = s
         }
-        let hq = quantize(f.harmony.map { $0.beat })
+        let hq = quantize(f.harmony.map { $0.beat }, fine: exact)
         for (i, h) in f.harmony.enumerated() {
             if hq[i] < startBeat { continue }
             let t = Int((hq[i] * Double(ticksPerBeat)).rounded())
@@ -147,7 +148,7 @@ public enum RhythmPlanner {
             s.harmonyLength = max(s.harmonyLength, Int((h.duration * Double(ticksPerBeat)).rounded()))
             slots[t] = s
         }
-        let bq = quantize(f.bass.map { $0.beat })
+        let bq = quantize(f.bass.map { $0.beat }, fine: exact)
         for (i, _) in f.bass.enumerated() {
             if bq[i] < startBeat { continue }
             let t = Int((bq[i] * Double(ticksPerBeat)).rounded())

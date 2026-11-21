@@ -10,6 +10,9 @@ public struct GeneratorOptions: Codable, Equatable {
     public var breakAmount: Double = 0.5
     /// Density multiplier for Re:MASTER (1 = default, 1.3 = extra dense but still playable).
     public var remasterBoost: Double = 1.15
+    /// Adds 16th-note stream fills between 8th-note events in energetic Re:MASTER passages
+    /// (on the beat grid, but not tied to a specific sound). Off by default: every note follows a real sound.
+    public var streamFills: Bool = false
     public var mirror: Bool = false
     public var designer: String = "MaiChart Studio"
     public var difficulties: [Difficulty] = Difficulty.allCases
@@ -69,7 +72,9 @@ public final class ChartGenerator {
         let playable = raw.filter { tempo.time(atBeat: Double($0.tick) / Double(ticksPerBeat)) >= options.minimumNoteTime }
         let intensity = songIntensity(shifted)
         slots = RhythmPlanner.distribute(playable, tempo: tempo, intensity: intensity, remasterBoost: options.remasterBoost, rng: &rng)
-        slots = RhythmPlanner.addRemasterFills(slots, tempo: tempo, amount: max(0, options.remasterBoost - 0.85) * 2.2, rng: &rng)
+        if options.streamFills {
+            slots = RhythmPlanner.addRemasterFills(slots, tempo: tempo, amount: max(0.4, options.remasterBoost - 0.85) * 2.2, rng: &rng)
+        }
         let planned = planTopLevel()
         if ProcessInfo.processInfo.environment["MAICHART_DEBUG"] != nil {
             var per: [Difficulty: Int] = [:]
