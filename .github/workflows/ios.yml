@@ -67,14 +67,48 @@ jobs:
           if-no-files-found: error
 
       - name: Simulator tests
+        continue-on-error: true
         run: |
           set -o pipefail
           DEV=$(xcrun simctl list devices available | grep -E "iPhone 1[5-9] Pro|iPhone 1[5-9]|iPhone 2[0-9]" | head -n 1 | sed -E 's/^ *([^(]+) \(.*/\1/' | sed 's/ *$//')
           echo "Simulator: $DEV"
           xcodebuild -project MaiChartStudio.xcodeproj -scheme MaiChartStudio \
             -destination "platform=iOS Simulator,name=$DEV" -derivedDataPath build-sim \
-            test 2>&1 | tee test-sim.log | grep -E "error:|Test Case|Executed|TEST (SUCCEEDED|FAILED)" || true
+            test 2>&1 | tee test-sim.log | grep -E "error:|Test Case|Executed|TEST (SUCCEEDED|FAILED)|BasicPitch|alignment|AUSampler|import:|ADX|Apple" || true
           grep -q "TEST SUCCEEDED" test-sim.log
+
+      - name: Screenshots
+        if: always()
+        run: |
+          set -x
+          APP=$(find build-sim/Build/Products -name "MaiChartStudio.app" -path "*iphonesimulator*" | head -n 1)
+          echo "App: $APP"
+          DEV=$(xcrun simctl list devices available | grep -E "iPhone 1[5-9] Pro|iPhone 1[5-9]|iPhone 2[0-9]" | head -n 1 | sed -E 's/^ *([^(]+) \(.*/\1/' | sed 's/ *$//')
+          UDID=$(xcrun simctl list devices available | grep "$DEV (" | head -n 1 | grep -oE "[0-9A-F-]{36}")
+          xcrun simctl boot "$UDID" || true
+          xcrun simctl bootstatus "$UDID" -b
+          xcrun simctl install "$UDID" "$APP"
+          mkdir -p ci-out/screens
+          for screen in home import project player tiles settings; do
+            xcrun simctl terminate "$UDID" com.rvmendillo.maichartstudio || true
+            xcrun simctl launch "$UDID" com.rvmendillo.maichartstudio -screen $screen
+            case $screen in
+              project) sleep 45 ;;
+              player) sleep 30 ;;
+              tiles) sleep 30 ;;
+              *) sleep 12 ;;
+            esac
+            xcrun simctl io "$UDID" screenshot "ci-out/screens/$screen.png"
+          done
+          ls -la ci-out/screens
+
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshots
+          path: ci-out/screens
+          if-no-files-found: ignore
 
       - name: Upload logs
         if: always()

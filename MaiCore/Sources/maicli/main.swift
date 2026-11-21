@@ -162,6 +162,30 @@ case "simai-times":
         let c = try SimaiParser.parse(body)
         for n in c.notes { print(String(format: "%.5f", n.time + m.first)) }
     } catch { fail("error: \(error)") }
+case "omr":
+    // maicli omr <page.pgm>... : prints recognised notes "beat pitch duration"
+    var pages: [GrayImage] = []
+    while let path = args.popFirst() {
+        guard let d = FileManager.default.contents(atPath: path) else { fail("cannot read \(path)") }
+        let b = [UInt8](d)
+        // binary PGM (P5)
+        var fields: [String] = []
+        var i = 0
+        while fields.count < 4 && i < b.count {
+            while i < b.count && (b[i] == 32 || b[i] == 10 || b[i] == 13 || b[i] == 9) { i += 1 }
+            if b[i] == 35 { while i < b.count && b[i] != 10 { i += 1 }; continue }
+            var tok = ""
+            while i < b.count && !(b[i] == 32 || b[i] == 10 || b[i] == 13 || b[i] == 9) { tok.append(Character(UnicodeScalar(b[i]))); i += 1 }
+            fields.append(tok)
+        }
+        i += 1
+        guard fields.first == "P5", let w = Int(fields[1]), let h = Int(fields[2]) else { fail("not a P5 pgm") }
+        pages.append(GrayImage(width: w, height: h, pixels: Array(b[i..<(i + w * h)])))
+    }
+    let t0 = Date()
+    let r = OMR.recognize(pages: pages, title: "omr")
+    FileHandle.standardError.write(String(format: "OMR: %d staves, %d systems, %d notes in %.2fs %@\n", r.staves, r.systems, r.notes, Date().timeIntervalSince(t0), r.warnings.joined(separator: "; ")).data(using: .utf8)!)
+    for n in r.score.notes.sorted(by: { ($0.startBeat, $0.pitch) < ($1.startBeat, $1.pitch) }) { print(String(format: "%.3f %d %.3f", n.startBeat, n.pitch, n.durationBeats)) }
 case "simai-check":
     guard let path = args.popFirst() else { fail("usage: maicli simai-check <maidata.txt>") }
     do {

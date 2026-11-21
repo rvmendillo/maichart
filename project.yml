@@ -23,7 +23,15 @@ targets:
     platform: iOS
     sources:
       - path: App/Sources
-      - path: App/Resources
+      - path: App/Resources/Assets.xcassets
+      - path: App/Resources/SoundFonts
+        type: folder
+      - path: App/Resources/Demo
+        type: folder
+      - path: App/Resources/Licenses
+        type: folder
+      - path: App/Models/NMPModel.mlpackage
+        buildPhase: sources
     dependencies:
       - package: MaiCore
         product: MaiCore
