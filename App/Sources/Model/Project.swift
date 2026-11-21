@@ -44,6 +44,8 @@ struct SongProject: Codable, Identifiable, Hashable {
     var noteCounts: [Int] = []
     var alignment: AlignmentReport? = nil
     var trackShift: Double = 0
+    /// True when track.mp3 is the user's own MP3 (bit-exact audio frames).
+    var trackIsOriginal: Bool? = nil
     var instrumentProgram: Int? = nil
     var renderer: String = "MaiSynth"
     var soundFontName: String = "GeneralUser GS"

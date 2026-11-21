@@ -145,7 +145,9 @@ enum PlayfieldRenderer {
         }
 
         // ---------- effects
-        for e in s.effects {
+        for (ei, e) in s.effects.enumerated() {
+            // only the newest label is shown where judgements overlap
+            let hiddenLabel = s.effects[(ei + 1)...].contains { $0.position.distance(to: e.position) < 0.3 }
             let age = t - e.time
             let pos = pt(e.position)
             if e.judgment != .miss {
@@ -187,7 +189,7 @@ enum PlayfieldRenderer {
             case .miss:
                 label = Text("MISS").font(.system(size: R * 0.065 * bounce, weight: .black, design: .rounded)).foregroundColor(.gray)
             }
-            ctx.opacity = ta
+            ctx.opacity = hiddenLabel ? 0 : ta
             ctx.draw(label, at: tp)
             if e.judgment != .criticalPerfect && e.judgment != .miss && abs(e.offset) > 0.0167 {
                 let fl = Text(e.offset < 0 ? "FAST" : "LATE").font(.system(size: R * 0.04, weight: .heavy, design: .rounded))

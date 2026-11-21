@@ -146,7 +146,10 @@ struct StudioView: View {
                 start = max(0, start - 400)
                 let n = min(1200, r.count - start, m.count - start - max(0, lag))
                 guard n > 100 else { throw AppError.message("Audio too short to compare") }
-                let a = Array(r[start..<(start + n)])
+                // the encoder may have applied ~1 dB of headroom: show the reference at the encoded level
+                let refPeak = ref.peak
+                let g: Float = refPeak > 0 ? min(1, (p.alignment?.referencePeak ?? refPeak) / refPeak) : 1
+                let a = r[start..<(start + n)].map { $0 * g }
                 let b = Array(m[(start + lag)..<(start + lag + n)])
                 await MainActor.run { wave = (a, b) }
             } catch {

@@ -87,8 +87,21 @@ enum Pipeline {
     static func processAudio(_ p: inout SongProject, progress: @escaping Progress) throws {
         let dir = ProjectStore.dir(p.id)
         let srcURL = dir.appendingPathComponent(p.sourceFile)
+        let trackURL = dir.appendingPathComponent("track.mp3")
         progress("Decoding audio", 0.04)
-        let audio = try AudioIO.decode(url: srcURL)
+        let audio: AudioSamples
+        if p.sourceFile.hasSuffix(".mp3") {
+            // keep the original audio frames bit-exact; only the Xing/Info header frame is removed so every
+            // player starts on the same sample. Analysis uses exactly this file through Apple's decoder.
+            let original = try Data(contentsOf: srcURL)
+            try MP3Tools.removingInfoFrame(original).data.write(to: trackURL)
+            audio = try AudioIO.decode(url: trackURL)
+            p.trackIsOriginal = true
+            p.alignment = nil
+            p.trackShift = 0
+        } else {
+            audio = try AudioIO.decode(url: srcURL)
+        }
         guard audio.duration > 5 else { throw AppError.message("The audio is too short (\(String(format: "%.1f", audio.duration)) s).") }
         p.durationSeconds = audio.duration
         progress("Transcribing melody (Basic Pitch)", 0.08)
@@ -106,24 +119,23 @@ enum Pipeline {
         p.notesSummary = "\(analysis.melody.count) melody notes · \(analysis.drums.count) drum hits · \(analysis.grid.tempo.segments.count) tempo segment(s)"
         let features = AudioAnalyzer.features(analysis, title: p.title, artist: p.artist)
         ProjectStore.saveFeatures(features, for: p)
-        // ---- track audio
-        progress("Preparing track.mp3", 0.78)
-        let trackURL = dir.appendingPathComponent("track.mp3")
-        if p.sourceFile.hasSuffix(".mp3") {
-            // keep the original bit-exact audio frames; only the Xing/Info header frame is removed
-            let original = try Data(contentsOf: srcURL)
-            let normalized = MP3Tools.removingInfoFrame(original).data
-            try normalized.write(to: trackURL)
-            let check = try MP3Decoder.decode(normalized).buffer
-            p.alignment = AudioAlignment.compare(reference: audio, decoded: check)
-            p.trackShift = 0
-        } else {
-            let r = try TrackProducer.makeMP3(from: audio) { progress("Encoding 320 kbps MP3", 0.78 + 0.12 * $0) }
-            try r.mp3.write(to: trackURL)
-            p.alignment = r.report
-            p.trackShift = r.timelineShift
+        if !p.sourceFile.hasSuffix(".mp3") {
+            progress("Encoding 320 kbps MP3", 0.78)
+            try encodeTrack(&p, from: audio, to: trackURL) { progress("Encoding 320 kbps MP3 & verifying waveform", 0.78 + 0.12 * $0) }
         }
         try generate(&p, features: features, progress: progress)
+    }
+
+    /// Encodes track.mp3 and verifies it with Apple's decoder (what AstroDX on iOS uses). Any remaining
+    /// offset between the WAV/source and the decoded MP3 is written into &first via trackShift.
+    static func encodeTrack(_ p: inout SongProject, from audio: AudioSamples, to url: URL, progress: @escaping (Double) -> Void) throws {
+        let r = try TrackProducer.makeMP3(from: audio, targetDecoderDelay: 0, progress: progress)
+        try r.mp3.write(to: url, options: .atomic)
+        let decoded = try AudioIO.decode(url: url)
+        let report = AudioAlignment.compare(reference: audio, decoded: decoded, referenceGain: r.gain)
+        p.alignment = report
+        p.trackShift = Double(report.lagSamples) / audio.sampleRate
+        p.trackIsOriginal = false
     }
 
     // MARK: Score sources
@@ -146,10 +158,7 @@ enum Pipeline {
         // internal reference render (never exported)
         try WAVFile.write(audio, to: dir.appendingPathComponent("reference.wav"), format: .int16)
         progress("Encoding 320 kbps MP3 & verifying waveform", 0.66)
-        let r = try TrackProducer.makeMP3(from: audio) { progress("Encoding 320 kbps MP3 & verifying waveform", 0.66 + 0.2 * $0) }
-        try r.mp3.write(to: dir.appendingPathComponent("track.mp3"))
-        p.alignment = r.report
-        p.trackShift = r.timelineShift
+        try encodeTrack(&p, from: audio, to: dir.appendingPathComponent("track.mp3")) { progress("Encoding 320 kbps MP3 & verifying waveform", 0.66 + 0.2 * $0) }
         var features = FeatureExtractor.features(from: score, source: p.source == .musicXML ? .musicXML : (p.source == .pdf ? .omr : .midi), artist: p.artist)
         features.tempo = score.tempo.withOffset(lead)
         p.bpm = score.tempo.initialBPM

@@ -72,7 +72,8 @@ case "mp3":
     do {
         let buf = try WAVFile.read(url: URL(fileURLWithPath: inp))
         let t0 = Date()
-        let r = try TrackProducer.makeMP3(from: buf)
+        let target = Int(ProcessInfo.processInfo.environment["MAICHART_DECODER_DELAY"] ?? "0") ?? 0
+        let r = try TrackProducer.makeMP3(from: buf, targetDecoderDelay: target)
         try r.mp3.write(to: URL(fileURLWithPath: out))
         print(String(format: "encoded in %.2fs, %d bytes, precompensated=%@, shift=%.4fs", Date().timeIntervalSince(t0), r.mp3.count, r.precompensated ? "yes" : "no", r.timelineShift))
         print("verify: \(r.report)")

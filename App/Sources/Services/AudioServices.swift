@@ -12,13 +12,23 @@ enum AppError: LocalizedError {
 enum AudioIO {
     static let audioExtensions: Set<String> = ["mp3", "m4a", "aac", "wav", "aif", "aiff", "caf", "flac", "mp4", "alac", "ogg", "opus"]
 
-    /// Decodes an audio file. MP3s are decoded with minimp3 after removing the Xing/Info frame so the
-    /// timeline is identical to what any MP3 decoder (including AstroDX's) produces.
+    /// Decodes an audio file with Apple's decoders. MP3s are decoded after removing the Xing/Info frame,
+    /// i.e. exactly the bytes exported as track.mp3, so the timeline is the one AstroDX on iOS plays.
     static func decode(url: URL) throws -> AudioSamples {
+        var url = url
+        var tmp: URL? = nil
         if url.pathExtension.lowercased() == "mp3" {
+            // decode exactly what AstroDX will play: the Info-frame-free file, through Apple's decoder
             let data = try Data(contentsOf: url)
-            return try MP3Decoder.decode(MP3Tools.removingInfoFrame(data).data).buffer
+            let stripped = MP3Tools.removingInfoFrame(data)
+            if stripped.removed {
+                let t = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".mp3")
+                try stripped.data.write(to: t)
+                tmp = t
+                url = t
+            }
         }
+        defer { if let t = tmp { try? FileManager.default.removeItem(at: t) } }
         let file: AVAudioFile
         do { file = try AVAudioFile(forReading: url) } catch {
             throw AppError.message("This audio format can't be decoded on this device (\(url.pathExtension)). Please use MP3, M4A/AAC, WAV, AIFF or FLAC.")

@@ -132,9 +132,13 @@ struct PianoTilesView: View {
                         Image(systemName: "xmark").font(.system(size: 16, weight: .black)).foregroundColor(.white)
                             .frame(width: 38, height: 38).background(Circle().fill(Color.black.opacity(0.6)))
                     }
-                    VStack(alignment: .leading, spacing: 0) {
-                        Text(title).font(MaiFont.heavy(14)).foregroundColor(.black).lineLimit(1)
-                        Text("Score \(session.judge.score) · Combo \(session.judge.combo)").font(MaiFont.bold(12)).foregroundColor(.gray)
+                    TimelineView(.periodic(from: .now, by: 0.15)) { _ in
+                        VStack(alignment: .leading, spacing: 0) {
+                            Text(title).font(MaiFont.heavy(14)).foregroundColor(.black).lineLimit(1)
+                            Text("Score \(session.judge.score) · Combo \(session.judge.combo)").font(MaiFont.bold(12)).foregroundColor(.gray)
+                        }
+                        .padding(.horizontal, 10).padding(.vertical, 4)
+                        .background(Capsule().fill(Color.white.opacity(0.85)))
                     }
                     Spacer()
                     Menu {

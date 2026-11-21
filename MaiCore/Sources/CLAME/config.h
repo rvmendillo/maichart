@@ -3,6 +3,13 @@
 #ifndef LAME_CONFIG_H
 #define LAME_CONFIG_H
 
+/* Always build LAME like its own release builds: SwiftPM/Xcode define DEBUG=1 in debug configurations,
+   which would turn on LAME's internal debug printing, and asserts are compiled out (none has side effects). */
+#undef DEBUG
+#ifndef NDEBUG
+#define NDEBUG 1
+#endif
+
 #define STDC_HEADERS 1
 #define HAVE_STDINT_H 1
 #define HAVE_INTTYPES_H 1

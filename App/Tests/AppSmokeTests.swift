@@ -38,19 +38,26 @@ final class AppIntegrationTests: XCTestCase {
         let m = MaidataFile(text: text)
         for d in Difficulty.allCases { XCTAssertNoThrow(try SimaiParser.parse(XCTUnwrap(m.chartBody(d)))) }
         let a = try XCTUnwrap(p.alignment)
-        print("Demo track alignment (minimp3): \(a)")
+        print("Demo track alignment (Apple decoder): \(a)")
         XCTAssertEqual(a.lagSamples, 0)
         XCTAssertGreaterThan(a.correlation, 0.995)
-        // Apple's decoder must agree with minimp3 on the sample timeline of our tag-less MP3
+        XCTAssertEqual(p.trackShift, 0, "the Apple-decoded MP3 must line up with the WAV without any offset")
+        // independent check straight from disk: Apple's decoder vs the reference WAV
         let url = ProjectStore.file(p, "track.mp3")
         let file = try AVAudioFile(forReading: url)
         let buf = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: AVAudioFrameCount(file.length))!
         try file.read(into: buf)
         let apple = AudioIO.audioBuffer(from: buf)
-        let mine = try MP3Decoder.decode(Data(contentsOf: url)).buffer
-        let cmp = AudioAlignment.compare(reference: mine, decoded: apple)
-        print("Apple AVAudioFile vs minimp3 on track.mp3: \(cmp)")
-        XCTAssertLessThanOrEqual(abs(cmp.lagSamples), 1105, "decoders disagree by more than the codec delay")
+        let wav = try WAVFile.read(url: ProjectStore.file(p, "reference.wav"))
+        let direct = AudioAlignment.compare(reference: wav, decoded: apple)
+        print("Apple AVAudioFile track.mp3 vs reference.wav: \(direct)")
+        XCTAssertEqual(direct.lagSamples, 0)
+        XCTAssertGreaterThan(direct.correlation, 0.995)
+        // a naive decoder (minimp3, no gapless info) keeps the standard 529-sample decoder delay
+        let naive = try MP3Decoder.decode(Data(contentsOf: url)).buffer
+        let cmp = AudioAlignment.compare(reference: apple, decoded: naive)
+        print("minimp3 vs Apple on track.mp3: \(cmp)")
+        XCTAssertLessThanOrEqual(abs(cmp.lagSamples - TrackProducer.mp3DecoderDelay), 1)
         // export contains no WAV
         let adx = try Pipeline.exportADX(p)
         let entries = try ZipArchive.read(Data(contentsOf: adx))
@@ -84,9 +91,13 @@ final class AppIntegrationTests: XCTestCase {
         var p = try Pipeline.createProject(from: m4a, metadata: AudioIO.Metadata(title: "Neon M4A", artist: "test", artwork: nil),
                                            render: RenderSettings(), progress: { s, f in if f > 0.99 { print(s) } })
         defer { ProjectStore.delete(p) }
-        print("M4A import: bpm \(p.bpm) first \(p.first) levels \(p.levels) melody \(p.melodySource ?? "") alignment \(p.alignment?.description ?? "-")")
+        print("M4A import: bpm \(p.bpm) first \(p.first) levels \(p.levels) melody \(p.melodySource ?? "") alignment \(p.alignment?.description ?? "-") shift \(p.trackShift)")
         XCTAssertEqual(p.bpm, 160, accuracy: 0.05)
         XCTAssertEqual(p.levels.count, 6)
+        let m4aAlign = try XCTUnwrap(p.alignment)
+        XCTAssertGreaterThan(m4aAlign.correlation, 0.99)
+        XCTAssertEqual(p.trackShift, Double(m4aAlign.lagSamples) / 44100, accuracy: 1e-9)
+        let m4aFirst = p.first
         // MP3 import keeps audio frames bit-exact
         let mp3In = ProjectStore.file(demo, "track.mp3")
         let tmpMP3 = FileManager.default.temporaryDirectory.appendingPathComponent("Neon Test.mp3")
@@ -98,6 +109,9 @@ final class AppIntegrationTests: XCTestCase {
         XCTAssertEqual(MP3Tools.removingInfoFrame(original).data, track)
         print("MP3 import: bpm \(p.bpm) first \(p.first) levels \(p.levels)")
         XCTAssertEqual(p.bpm, 160, accuracy: 0.05)
+        XCTAssertEqual(p.trackIsOriginal, true)
+        // the same music through both import paths lands on the same beat grid (within 10 ms)
+        XCTAssertEqual(p.first, m4aFirst, accuracy: 0.010)
         ProjectStore.delete(p)
     }
 

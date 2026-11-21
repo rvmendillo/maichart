@@ -51,8 +51,12 @@ public enum AudioAlignment {
         return (best - 2 * maxLag) - maxLag
     }
 
-    public static func compare(reference: AudioSamples, decoded: AudioSamples, maxLagMilliseconds: Double = 120) -> AlignmentReport {
-        let ref = reference.mono()
+    /// - Parameter referenceGain: gain the encoder applied to the reference before encoding (headroom), so SNR
+    ///   and peaks are measured against what was actually encoded.
+    public static func compare(reference: AudioSamples, decoded: AudioSamples, referenceGain: Float = 1,
+                               maxLagMilliseconds: Double = 120) -> AlignmentReport {
+        var ref = reference.mono()
+        if referenceGain != 1 { for i in ref.indices { ref[i] *= referenceGain } }
         var dec = decoded.mono()
         if abs(decoded.sampleRate - reference.sampleRate) > 0.5 {
             dec = DSP.resample(dec, from: decoded.sampleRate, to: reference.sampleRate)
@@ -102,7 +106,7 @@ public enum AudioAlignment {
         for ch in decoded.channels { for v in ch where abs(v) >= 0.9999 { clipped += 1 } }
         return AlignmentReport(lagSamples: l, lagMilliseconds: Double(l) / sr * 1000, correlation: corr, snrDB: snr,
                                spectralDistanceDB: lsd, referenceDuration: reference.duration, decodedDuration: decoded.duration,
-                               referencePeak: reference.peak, decodedPeak: decoded.peak, clippedSamples: clipped)
+                               referencePeak: reference.peak * referenceGain, decodedPeak: decoded.peak, clippedSamples: clipped)
     }
 }
 
@@ -110,35 +114,42 @@ public enum AudioAlignment {
 public enum TrackProducer {
     public struct Result {
         public var mp3: Data
-        /// Verification of the MP3 against the source PCM (as decoded by a naive decoder).
+        /// Verification of the MP3 against the source PCM, decoded by minimp3 (which keeps the 529-sample decoder delay).
         public var report: AlignmentReport
-        /// Seconds by which the MP3 timeline is later than the source PCM (add to &first). 0 when pre-compensated.
+        /// Seconds by which the target decoder's timeline is later than the source PCM (add to &first). 0 when pre-compensated.
         public var timelineShift: Double
         public var precompensated: Bool
+        /// Headroom gain applied before encoding (1 = untouched).
+        public var gain: Float
     }
 
-    /// Encodes PCM to a 320 kbps CBR MP3 without an info tag. When the first ~25 ms are silent the
-    /// encoder delay is removed up front so the decoded MP3 lines up sample-exactly with the WAV.
+    /// Standard MP3 decoder delay (528 + 1 samples). Apple's AudioToolbox removes it even without a LAME tag,
+    /// naive decoders (minimp3, FFmpeg without tag) keep it.
+    public static let mp3DecoderDelay = 529
+
+    /// Encodes PCM to a 320 kbps CBR MP3 without an info tag. When the first ~25 ms are silent the encoder
+    /// delay (plus the target decoder's own delay) is removed up front so the decoded MP3 lines up sample-exactly
+    /// with the WAV on the target decoder.
+    /// - Parameter targetDecoderDelay: delay the target player's decoder leaves in (0 = Apple / iOS, 529 = naive).
     public static func makeMP3(from source: AudioSamples, options: MP3Encoder.Options = MP3Encoder.Options(),
-                               progress: ((Double) -> Void)? = nil) throws -> Result {
+                               targetDecoderDelay: Int = 0, progress: ((Double) -> Void)? = nil) throws -> Result {
         var pcm = source.channelCount > 2 ? source.stereo() : source
         // keep MP3 encoding from clipping: leave ~1 dB of headroom for codec overshoot
         let peak = pcm.peak
-        if peak > 0.9 { pcm.applyGain(0.9 / peak) }
-        let delay = MP3Encoder.nominalDelay
+        let gain: Float = peak > 0.9 ? 0.9 / peak : 1
+        if gain != 1 { pcm.applyGain(gain) }
+        let encoderDelay = MP3Encoder.nominalDelay - mp3DecoderDelay // 576
+        let trim = encoderDelay + targetDecoderDelay
         let silent = pcm.leadingSilenceFrames(threshold: 0.0003)
-        let precomp = silent >= delay + 64
-        let input = precomp ? pcm.shifted(byFrames: -delay) : pcm
+        let precomp = silent >= trim + 64
+        let input = precomp ? pcm.shifted(byFrames: -trim) : pcm
         let data = try MP3Encoder.encode(input, options: options) { progress?($0 * 0.85) }
         let decoded = try MP3Decoder.decode(data, gapless: false).buffer
-        var report = AudioAlignment.compare(reference: pcm, decoded: decoded)
-        var shift = Double(report.lagSamples) / pcm.sampleRate
-        if precomp && report.lagSamples != 0 && abs(report.lagSamples) < delay {
-            // unexpected decoder behaviour: fall back to measuring and compensating via &first
-            report = AudioAlignment.compare(reference: pcm, decoded: decoded)
-            shift = Double(report.lagSamples) / pcm.sampleRate
-        }
+        let report = AudioAlignment.compare(reference: pcm, decoded: decoded)
+        // minimp3 keeps the full decoder delay; translate its measurement to the target decoder
+        let targetLag = report.lagSamples - (mp3DecoderDelay - targetDecoderDelay)
+        let shift = Double(targetLag) / pcm.sampleRate
         progress?(1)
-        return Result(mp3: data, report: report, timelineShift: shift, precompensated: precomp && report.lagSamples == 0)
+        return Result(mp3: data, report: report, timelineShift: shift, precompensated: precomp && targetLag == 0, gain: gain)
     }
 }

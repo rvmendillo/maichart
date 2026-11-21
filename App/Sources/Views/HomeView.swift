@@ -54,7 +54,7 @@ struct HomeView: View {
         }
         .task {
             if let s = initialScreen, s != "home" {
-                if library.projects.isEmpty { _ = await library.createDemo() }
+                if library.projects.isEmpty && ["project", "player", "tiles"].contains(s) { _ = await library.createDemo() }
                 if s != "import", let p = library.projects.first { path = [p] }
                 if s == "import" { showImport = true }
                 if s == "settings" { showSettings = true }

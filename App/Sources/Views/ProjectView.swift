@@ -167,7 +167,10 @@ struct ProjectView: View {
     var audioPanel: some View {
         VStack(alignment: .leading, spacing: 8) {
             SectionHeader(title: "Audio quality check", icon: "waveform")
-            if let a = project.alignment {
+            if project.trackIsOriginal == true {
+                Text("track.mp3 is your original MP3: every audio frame is copied bit-exactly (only the Xing/Info header frame is removed so all players start on the same sample). The beat grid was measured on exactly this file.")
+                    .font(MaiFont.body(12)).foregroundColor(.white.opacity(0.8))
+            } else if let a = project.alignment {
                 HStack {
                     StatPill(label: "LAG", value: "\(a.lagSamples) smp", color: a.aligned ? MaiColor.mint : MaiColor.orange)
                     StatPill(label: "CORRELATION", value: String(format: "%.4f", a.correlation))
@@ -178,9 +181,7 @@ struct ProjectView: View {
                     StatPill(label: "LENGTH", value: String(format: "%.2fs/%.2fs", a.referenceDuration, a.decodedDuration))
                     StatPill(label: "CLIPPED", value: "\(a.clippedSamples)", color: a.clippedSamples == 0 ? MaiColor.mint : MaiColor.orange)
                 }
-                Text(project.source == .audio && project.sourceFile.hasSuffix(".mp3")
-                     ? "Your MP3's audio frames are copied bit-exactly (only the Xing header frame is removed so every player starts on the same sample)."
-                     : "track.mp3 (320 kbps) was decoded again and compared with the internal WAV render: \(a.aligned ? "the waveforms line up sample-exactly" : String(format: "a %.1f ms encoder delay is compensated in &first", a.lagMilliseconds)).")
+                Text("track.mp3 (320 kbps CBR) was decoded again with iOS's MP3 decoder and compared with the \(project.source == .audio ? "source audio" : "internal WAV render"): \(a.aligned ? "the waveforms line up sample-exactly" : String(format: "a %.1f ms codec delay is compensated in &first", a.lagMilliseconds)).")
                     .font(MaiFont.body(12)).foregroundColor(.white.opacity(0.7))
             } else {
                 Text("No report yet.").font(MaiFont.body(12)).foregroundColor(.white.opacity(0.6))

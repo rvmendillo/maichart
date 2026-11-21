@@ -74,8 +74,9 @@ jobs:
           set -o pipefail
           DEV=$(xcrun simctl list devices available | grep -E "iPhone 1[5-9] Pro|iPhone 1[5-9]|iPhone 2[0-9]" | head -n 1 | sed -E 's/^ *([^(]+) \(.*/\1/' | sed 's/ *$//')
           echo "Simulator: $DEV"
-          xcodebuild -project MaiChartStudio.xcodeproj -scheme MaiChartStudio \
+          xcodebuild -project MaiChartStudio.xcodeproj -scheme MaiChartStudio -configuration Release \
             -destination "platform=iOS Simulator,name=$DEV" -derivedDataPath build-sim \
+            ENABLE_TESTABILITY=YES CODE_SIGNING_ALLOWED=NO \
             test 2>&1 | tee test-sim.log | grep -E "error:|Test Case|Executed|TEST (SUCCEEDED|FAILED)|BasicPitch|alignment|AUSampler|import:|ADX|Apple" || true
           grep -q "TEST SUCCEEDED" test-sim.log
 
@@ -83,7 +84,11 @@ jobs:
         if: always()
         run: |
           set -x
-          APP=$(find build-sim/Build/Products -name "MaiChartStudio.app" -path "*iphonesimulator*" | head -n 1)
+          if [ ! -d build-sim/Build/Products/Release-iphonesimulator/MaiChartStudio.app ]; then
+            xcodebuild -project MaiChartStudio.xcodeproj -scheme MaiChartStudio -configuration Release -sdk iphonesimulator \
+              -destination 'generic/platform=iOS Simulator' -derivedDataPath build-sim CODE_SIGNING_ALLOWED=NO build > build-sim.log 2>&1 || tail -n 40 build-sim.log
+          fi
+          APP=$(find build-sim/Build/Products -name "MaiChartStudio.app" -path "*Release-iphonesimulator*" | head -n 1)
           echo "App: $APP"
           DEV=$(xcrun simctl list devices available | grep -E "iPhone 1[5-9] Pro|iPhone 1[5-9]|iPhone 2[0-9]" | head -n 1 | sed -E 's/^ *([^(]+) \(.*/\1/' | sed 's/ *$//')
           UDID=$(xcrun simctl list devices available | grep "$DEV (" | head -n 1 | grep -oE "[0-9A-F-]{36}")

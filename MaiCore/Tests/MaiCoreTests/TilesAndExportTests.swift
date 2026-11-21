@@ -31,6 +31,44 @@ final class TilesAndExportTests: XCTestCase {
         }
     }
 
+    func testTrackProducerAlignsForAppleAndNaiveDecoders() throws {
+        // 1 s of silence then a click train
+        let sr = 44100.0
+        var x = [Float](repeating: 0, count: Int(sr * 6))
+        var t = 44100
+        while t < x.count - 2000 { for k in 0..<400 { x[t + k] = Float(sin(Double(k) * 0.3)) * Float(exp(-Double(k) / 80)) * 0.8 }; t += 11025 }
+        let pcm = AudioSamples(sampleRate: sr, channels: [x, x])
+        // iOS target: minimp3 keeps 529 samples, Apple removes them -> target lag 0
+        let apple = try TrackProducer.makeMP3(from: pcm, targetDecoderDelay: 0)
+        XCTAssertEqual(apple.report.lagSamples, TrackProducer.mp3DecoderDelay)
+        XCTAssertEqual(apple.timelineShift, 0)
+        XCTAssertTrue(apple.precompensated)
+        // naive target: minimp3 itself is the target -> lag 0
+        let naive = try TrackProducer.makeMP3(from: pcm, targetDecoderDelay: TrackProducer.mp3DecoderDelay)
+        XCTAssertEqual(naive.report.lagSamples, 0)
+        XCTAssertGreaterThan(naive.report.correlation, 0.99)
+        // no leading silence: nothing trimmed, delay measured and reported as a timeline shift
+        var y = x
+        for k in 0..<2000 { y[k] = Float(sin(Double(k) * 0.05)) * 0.5 }
+        let shifted = try TrackProducer.makeMP3(from: AudioSamples(sampleRate: sr, channels: [y, y]), targetDecoderDelay: 0)
+        XCTAssertFalse(shifted.precompensated)
+        XCTAssertEqual(shifted.timelineShift, 576 / sr, accuracy: 1.5 / sr)
+        // a full-scale master gets ~1 dB of headroom; the report is measured against what was encoded
+        var loud = x
+        for i in loud.indices { loud[i] *= 1.25 }
+        let loudPCM = AudioSamples(sampleRate: sr, channels: [loud, loud])
+        let hot = try TrackProducer.makeMP3(from: loudPCM, targetDecoderDelay: TrackProducer.mp3DecoderDelay)
+        XCTAssertGreaterThan(loudPCM.peak, 0.9)
+        XCTAssertEqual(hot.gain, 0.9 / loudPCM.peak, accuracy: 0.0001)
+        XCTAssertLessThanOrEqual(hot.report.decodedPeak, 1.0)
+        let decoded = try MP3Decoder.decode(hot.mp3, gapless: false).buffer
+        let fair = AudioAlignment.compare(reference: loudPCM, decoded: decoded, referenceGain: hot.gain)
+        let unfair = AudioAlignment.compare(reference: loudPCM, decoded: decoded)
+        XCTAssertEqual(fair.lagSamples, 0)
+        XCTAssertGreaterThan(fair.snrDB, unfair.snrDB + 6)
+        XCTAssertGreaterThan(fair.snrDB, 20)
+    }
+
     func testAdxPackageHasNoWAVAndParses() throws {
         let set = ChartGenerator.generate(FeatureExtractor.features(from: try MIDIFile.parse(data: Data(contentsOf: ChartGeneratorTests.resource("piano_solo.mid")))),
                                           title: "Glass/Garden: \"Test\"", artist: "MaiChart")
