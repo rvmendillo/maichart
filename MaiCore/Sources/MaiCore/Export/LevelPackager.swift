@@ -11,9 +11,13 @@ public enum LevelPackager {
         public var background: Data?
         public var backgroundExtension: String = "jpg"
         public var video: Data?
+        /// Folder name to use instead of one derived from the title (keeps an imported level's identity).
+        public var folder: String? = nil
+        /// Any other files of an imported level folder (kept as they were).
+        public var extraFiles: [String: Data] = [:]
 
         public init(title: String, maidata: Data, track: Data, trackExtension: String = "mp3", background: Data? = nil,
-                    backgroundExtension: String = "jpg", video: Data? = nil) {
+                    backgroundExtension: String = "jpg", video: Data? = nil, folder: String? = nil, extraFiles: [String: Data] = [:]) {
             self.title = title
             self.maidata = maidata
             self.track = track
@@ -21,7 +25,11 @@ public enum LevelPackager {
             self.background = background
             self.backgroundExtension = backgroundExtension
             self.video = video
+            self.folder = folder
+            self.extraFiles = extraFiles
         }
+
+        var folderName: String { folder.map { LevelPackager.folderName($0) } ?? LevelPackager.folderName(title) }
     }
 
     /// File-system safe folder name (keeps Unicode letters, removes reserved characters).
@@ -35,11 +43,17 @@ public enum LevelPackager {
     }
 
     public static func entries(_ level: Level) -> [ZipEntry] {
-        let folder = folderName(level.title)
+        let folder = level.folderName
         var e = [ZipEntry(path: "\(folder)/maidata.txt", data: level.maidata),
                  ZipEntry(path: "\(folder)/track.\(level.trackExtension)", data: level.track)]
         if let bg = level.background { e.append(ZipEntry(path: "\(folder)/bg.\(level.backgroundExtension)", data: bg)) }
         if let v = level.video { e.append(ZipEntry(path: "\(folder)/pv.mp4", data: v)) }
+        let taken = Set(e.map { ($0.path as NSString).lastPathComponent.lowercased() })
+        for name in level.extraFiles.keys.sorted() where !taken.contains(name.lowercased()) && !name.contains("/") {
+            // never ship the internal reference render
+            if name.lowercased().hasSuffix(".wav") && name.lowercased().hasPrefix("reference") { continue }
+            e.append(ZipEntry(path: "\(folder)/\(name)", data: level.extraFiles[name]!))
+        }
         return e
     }
 
@@ -51,7 +65,7 @@ public enum LevelPackager {
     /// Writes the plain level folder (for copying into AstroDX manually). Returns the folder URL.
     @discardableResult
     public static func writeFolder(_ level: Level, into directory: URL) throws -> URL {
-        let folder = directory.appendingPathComponent(folderName(level.title), isDirectory: true)
+        let folder = directory.appendingPathComponent(level.folderName, isDirectory: true)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         for e in entries(level) {
             let name = (e.path as NSString).lastPathComponent

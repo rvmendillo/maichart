@@ -4,6 +4,8 @@ import MaiCore
 struct SongProject: Codable, Identifiable, Hashable {
     enum Source: String, Codable {
         case audio, midi, musicXML, pdf
+        /// An existing maimai chart (AstroDX / Majdata level folder or .adx) imported as-is.
+        case chart
 
         var label: String {
             switch self {
@@ -11,6 +13,7 @@ struct SongProject: Codable, Identifiable, Hashable {
             case .midi: return "MIDI"
             case .musicXML: return "MusicXML"
             case .pdf: return "PDF score"
+            case .chart: return "maimai chart"
             }
         }
         var icon: String {
@@ -19,6 +22,7 @@ struct SongProject: Codable, Identifiable, Hashable {
             case .midi: return "pianokeys"
             case .musicXML: return "music.note.list"
             case .pdf: return "doc.richtext"
+            case .chart: return "square.stack.3d.up.fill"
             }
         }
     }
@@ -51,12 +55,23 @@ struct SongProject: Codable, Identifiable, Hashable {
     var soundFontName: String = "GeneralUser GS"
     var notesSummary: String = ""
     var durationSeconds: Double = 0
+    /// Imported charts: the original level folder name (kept on export so AstroDX sees the same level).
+    var levelFolderName: String? = nil
+    /// Imported charts: fingerprint of the original maidata.txt (skips re-importing the same chart).
+    var importSignature: String? = nil
 
     static func == (a: SongProject, b: SongProject) -> Bool { a.id == b.id && a.levels == b.levels && a.userOffsetMs == b.userOffsetMs && a.title == b.title && a.options == b.options }
     func hash(into h: inout Hasher) { h.combine(id) }
 
     var first: Double { baseFirst + userOffsetMs / 1000 }
-    var hasCharts: Bool { !levels.isEmpty }
+    var hasCharts: Bool { levels.contains { !$0.isEmpty } }
+    var isImportedChart: Bool { source == .chart }
+
+    /// Whether this project has a chart for the difficulty (imported levels may skip some).
+    func hasChart(_ d: Difficulty) -> Bool {
+        let i = d.rawValue - 1
+        return i < levels.count && !levels[i].isEmpty
+    }
 }
 
 enum ProjectStore {
@@ -78,6 +93,32 @@ enum ProjectStore {
         let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         let dir = docs.appendingPathComponent("SoundFonts", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
+    }
+
+    /// Files › On My iPhone › MaiChart Studio › Import — anything dropped here is imported when the app opens,
+    /// the same way AstroDX picks up files placed in its folder.
+    static var importInbox: URL {
+        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let dir = docs.appendingPathComponent("Import", isDirectory: true)
+        let fm = FileManager.default
+        if !fm.fileExists(atPath: dir.path) {
+            try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
+        }
+        let readme = dir.appendingPathComponent("README.txt")
+        if !fm.fileExists(atPath: readme.path) {
+            let text = """
+            Put files here and MaiChart Studio adds them when it opens:
+
+            • maimai charts: level folders (maidata.txt + track.mp3 or track.ogg + bg.jpg), folders of levels
+              (for example a copy of AstroDX's "levels" folder), or .adx / .zip archives.
+            • Songs to chart: MP3, M4A, WAV, FLAC, MIDI, MusicXML (.musicxml/.mxl) or PDF scores.
+
+            Imported items are moved to the "Imported" folder (you can delete them there).
+            Items that could not be imported are moved to "Failed".
+            """
+            try? Data(text.utf8).write(to: readme)
+        }
         return dir
     }
 

@@ -32,18 +32,75 @@ struct MaiChartStudioApp: App {
 
 struct RootView: View {
     @EnvironmentObject var library: Library
+    @Environment(\.scenePhase) private var scenePhase
     var initialScreen: String?
 
     var body: some View {
+        HomeView(initialScreen: initialScreen)
+            .jobHost()
+            .onOpenURL { url in Task { await library.openIncoming(url) } }
+            .onChange(of: scenePhase) { phase in
+                // like AstroDX: anything dropped into the Import folder is added when the app comes to the front
+                let testing = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+                if phase == .active && initialScreen == nil && !testing { Task { await library.scanInbox() } }
+            }
+    }
+}
+
+/// Shows import progress, errors and notices in the app's own panels. Applied to the root and to sheets,
+/// so they are visible whatever is presented (system alerts can't appear behind a sheet).
+struct JobHost: ViewModifier {
+    @EnvironmentObject var library: Library
+
+    func body(content: Content) -> some View {
         ZStack {
-            HomeView(initialScreen: initialScreen)
-            if let job = library.job { JobOverlay(job: job) }
+            content
+            if let job = library.job {
+                JobOverlay(job: job)
+            } else if let message = library.errorMessage {
+                MessagePanel(title: "Something went wrong", text: message, icon: "exclamationmark.triangle.fill", color: MaiColor.orange) {
+                    library.errorMessage = nil
+                }
+            } else if let n = library.notice {
+                MessagePanel(title: n.title, text: n.text, icon: "checkmark.seal.fill", color: MaiColor.mint) {
+                    library.notice = nil
+                }
+            }
         }
-        .alert("Something went wrong", isPresented: Binding(get: { library.errorMessage != nil }, set: { if !$0 { library.errorMessage = nil } })) {
-            Button("OK", role: .cancel) { library.errorMessage = nil }
-        } message: {
-            Text(library.errorMessage ?? "")
+        .animation(.easeOut(duration: 0.2), value: library.job == nil)
+    }
+}
+
+extension View {
+    func jobHost() -> some View { modifier(JobHost()) }
+}
+
+struct MessagePanel: View {
+    let title: String
+    let text: String
+    let icon: String
+    let color: Color
+    let onClose: () -> Void
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.5).ignoresSafeArea().onTapGesture(perform: onClose)
+            VStack(spacing: 12) {
+                Image(systemName: icon).font(.system(size: 34, weight: .bold)).foregroundColor(color)
+                Text(title).font(MaiFont.heavy(17)).foregroundColor(.white)
+                Text(text).font(MaiFont.body(13)).foregroundColor(.white.opacity(0.9)).multilineTextAlignment(.leading)
+                    .lineLimit(16).minimumScaleFactor(0.8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Button("OK", action: onClose)
+                    .buttonStyle(MaiButtonStyle(kind: .primary, compact: true))
+                    .accessibilityIdentifier("message-ok")
+            }
+            .padding(22)
+            .frame(maxWidth: 340)
+            .maiPanel(accent: color)
+            .padding(.horizontal, 20)
         }
+        .transition(.opacity)
     }
 }
 

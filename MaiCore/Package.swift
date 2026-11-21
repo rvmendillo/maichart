@@ -24,8 +24,12 @@ let package = Package(
             exclude: ["LICENSE-CC0.txt"]
         ),
         .target(
+            name: "CStbVorbis",
+            path: "Sources/CStbVorbis"
+        ),
+        .target(
             name: "MaiCore",
-            dependencies: ["CLAME", "CMiniMP3"],
+            dependencies: ["CLAME", "CMiniMP3", "CStbVorbis"],
             path: "Sources/MaiCore"
         ),
         .executableTarget(
@@ -36,7 +40,8 @@ let package = Package(
         .testTarget(
             name: "MaiCoreTests",
             dependencies: ["MaiCore"],
-            path: "Tests/MaiCoreTests"
+            path: "Tests/MaiCoreTests",
+            exclude: ["Resources"] // read from disk via #filePath
         ),
     ],
     swiftLanguageVersions: [.v5]

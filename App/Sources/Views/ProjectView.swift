@@ -59,11 +59,11 @@ struct ProjectView: View {
         .sheet(item: $shareURL) { url in ShareSheet(items: [url]) }
         .sheet(item: $exportPickerURL) { url in ExportPicker(url: url) }
         .sheet(isPresented: $showOptions) { OptionsSheet(project: $project, onApply: { p in Task { if let np = await library.regenerate(p) { project = np } } }) }
-        .sheet(isPresented: $showStudio) { StudioView(project: $project).environmentObject(library).environmentObject(settings) }
+        .sheet(isPresented: $showStudio) { StudioView(project: $project).jobHost().environmentObject(library).environmentObject(settings) }
         .sheet(isPresented: $showMaidata) { MaidataSheet(text: ProjectStore.maidataText(project) ?? "") }
         .onReceive(library.$projects) { list in if let p = list.first(where: { $0.id == project.id }) { project = p } }
         .onAppear {
-            if autoOpen == "player" { openPlayer(.master, autoplay: true, autostart: true) }
+            if autoOpen == "player" { openPlayer(project.hasChart(.master) ? .master : (Difficulty.allCases.last { project.hasChart($0) } ?? .master), autoplay: true, autostart: true) }
             if autoOpen == "tiles" { openTiles() }
         }
     }
@@ -89,12 +89,13 @@ struct ProjectView: View {
     var difficultyList: some View {
         VStack(spacing: 10) {
             SectionHeader(title: "Charts", icon: "star.fill")
-            ForEach(Difficulty.allCases) { d in
+            ForEach(Difficulty.allCases.filter { !project.isImportedChart || project.hasChart($0) }) { d in
                 let i = d.rawValue - 1
+                let available = project.hasChart(d)
                 HStack(spacing: 10) {
                     VStack(alignment: .leading, spacing: 5) {
-                        DifficultyBadge(difficulty: d, level: i < project.levels.count ? project.levels[i] : "-")
-                        Text("\(i < project.noteCounts.count ? project.noteCounts[i] : 0) notes" + (i < project.levelValues.count ? String(format: " · internal %.1f", project.levelValues[i]) : ""))
+                        DifficultyBadge(difficulty: d, level: available ? project.levels[i] : "-")
+                        Text(caption(for: d))
                             .font(MaiFont.bold(12)).foregroundColor(.white.opacity(0.8))
                             .lineLimit(1).minimumScaleFactor(0.75)
                             .padding(.leading, 4)
@@ -102,16 +103,32 @@ struct ProjectView: View {
                     Spacer(minLength: 6)
                     Button { openPlayer(d, autoplay: true) } label: { Image(systemName: "eye.fill") }
                         .buttonStyle(MaiButtonStyle(kind: .secondary, compact: true))
+                        .disabled(!available)
                     Button { openPlayer(d, autoplay: false) } label: { Image(systemName: "play.fill") }
                         .buttonStyle(MaiButtonStyle(kind: .difficulty(d), compact: true))
+                        .disabled(!available)
                         .accessibilityIdentifier("play-\(d.rawValue)")
                 }
                 .padding(10)
                 .background(RoundedRectangle(cornerRadius: 16).fill(MaiColor.difficulty(d).opacity(0.18)))
                 .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(MaiColor.difficulty(d).opacity(0.7), lineWidth: 1.5))
+                .opacity(available ? 1 : 0.55)
             }
         }
         .maiPanel(accent: MaiColor.violet)
+    }
+
+    /// "312 notes · internal 13.1" (generated) / "312 notes · level 13.7" (imported) / "No chart".
+    func caption(for d: Difficulty) -> String {
+        guard project.hasChart(d) else { return "No chart" }
+        let i = d.rawValue - 1
+        let notes = i < project.noteCounts.count ? project.noteCounts[i] : 0
+        var text = "\(notes) notes"
+        if i < project.levelValues.count, project.levelValues[i] > 0 {
+            let label = project.isImportedChart ? "level" : "internal"
+            text += " · \(label) " + String(format: "%.1f", project.levelValues[i])
+        }
+        return text
     }
 
     var syncPanel: some View {
@@ -119,7 +136,11 @@ struct ProjectView: View {
             SectionHeader(title: "Sync & offset", icon: "metronome.fill")
             HStack {
                 StatPill(label: "&first", value: String(format: "%.3fs", project.first))
-                StatPill(label: "BEAT GRID", value: project.gridConfidence.map { String(format: "%.0f%%", $0 * 100) } ?? "-")
+                if project.isImportedChart {
+                    StatPill(label: "BPM", value: SimaiWriter.formatBPM((project.bpm * 100).rounded() / 100))
+                } else {
+                    StatPill(label: "BEAT GRID", value: project.gridConfidence.map { String(format: "%.0f%%", $0 * 100) } ?? "-")
+                }
                 StatPill(label: "NUDGE", value: String(format: "%+.0f ms", project.userOffsetMs), color: MaiColor.yellow)
             }
             Text("If notes feel early or late in AstroDX, nudge the chart. The change is written into &first; the notes themselves stay on the beat grid.")
@@ -138,21 +159,33 @@ struct ProjectView: View {
 
     var actionsPanel: some View {
         VStack(alignment: .leading, spacing: 12) {
-            SectionHeader(title: "Create & export", icon: "sparkles")
-            HStack(spacing: 10) {
-                Button { Task { if let p = await library.remix(project) { project = p } } } label: { Label("Remix", systemImage: "shuffle") }
-                    .buttonStyle(MaiButtonStyle(kind: .primary))
-                Button { showOptions = true } label: { Label("Options", systemImage: "slider.horizontal.3") }
-                    .buttonStyle(MaiButtonStyle(kind: .secondary))
-            }
-            HStack(spacing: 10) {
-                Button { openTiles() } label: { Label("Piano Tiles", systemImage: "pianokeys") }
-                    .buttonStyle(MaiButtonStyle(kind: .secondary))
-                Button { showStudio = true } label: { Label("Studio", systemImage: "waveform.path.ecg") }
-                    .buttonStyle(MaiButtonStyle(kind: .secondary))
+            SectionHeader(title: project.isImportedChart ? "Play & export" : "Create & export", icon: "sparkles")
+            if project.isImportedChart {
+                Text("This chart is kept exactly as imported. MaiChart Studio can also write its own EASY → Re:MASTER charts for the same song.")
+                    .font(MaiFont.body(12)).foregroundColor(.white.opacity(0.7))
+                Button { Task { if let p = await library.chartAudio(of: project) { library.openRequest = p } } } label: {
+                    Label("Make my own charts for this song", systemImage: "wand.and.stars")
+                }
+                .buttonStyle(MaiButtonStyle(kind: .primary))
+                .disabled(library.isBusy)
+            } else {
+                HStack(spacing: 10) {
+                    Button { Task { if let p = await library.remix(project) { project = p } } } label: { Label("Remix", systemImage: "shuffle") }
+                        .buttonStyle(MaiButtonStyle(kind: .primary))
+                    Button { showOptions = true } label: { Label("Options", systemImage: "slider.horizontal.3") }
+                        .buttonStyle(MaiButtonStyle(kind: .secondary))
+                }
+                HStack(spacing: 10) {
+                    Button { openTiles() } label: { Label("Piano Tiles", systemImage: "pianokeys") }
+                        .buttonStyle(MaiButtonStyle(kind: .secondary))
+                    Button { showStudio = true } label: { Label("Studio", systemImage: "waveform.path.ecg") }
+                        .buttonStyle(MaiButtonStyle(kind: .secondary))
+                }
             }
             Divider().overlay(Color.white.opacity(0.2))
-            Text("AstroDX: open the .adx with AstroDX, or save it into the AstroDX folder in the Files app. The export contains maidata.txt, track.mp3 and bg.jpg (no WAV).")
+            Text(project.isImportedChart
+                 ? "AstroDX: open the .adx with AstroDX, or save it into the AstroDX folder in the Files app. The level keeps its folder name, audio, background and video."
+                 : "AstroDX: open the .adx with AstroDX, or save it into the AstroDX folder in the Files app. The export contains maidata.txt, track.mp3 and bg.jpg (no WAV).")
                 .font(MaiFont.body(12)).foregroundColor(.white.opacity(0.7))
             HStack(spacing: 10) {
                 Button { shareURL = library.exportADX(project) } label: { Label("Share .adx", systemImage: "square.and.arrow.up") }
@@ -169,7 +202,10 @@ struct ProjectView: View {
     var audioPanel: some View {
         VStack(alignment: .leading, spacing: 8) {
             SectionHeader(title: "Audio quality check", icon: "waveform")
-            if project.trackIsOriginal == true {
+            if project.isImportedChart {
+                Text("\((project.trackFile as NSString).lastPathComponent) is the level's original audio. It is played as-is and exported byte-for-byte.")
+                    .font(MaiFont.body(12)).foregroundColor(.white.opacity(0.8))
+            } else if project.trackIsOriginal == true {
                 Text("track.mp3 is your original MP3: every audio frame is copied bit-exactly (only the Xing/Info header frame is removed so all players start on the same sample). The beat grid was measured on exactly this file.")
                     .font(MaiFont.body(12)).foregroundColor(.white.opacity(0.8))
             } else if let a = project.alignment {
@@ -207,9 +243,9 @@ struct ProjectView: View {
                 let m = MaidataFile(text: text)
                 guard let body = m.chartBody(d) else { throw AppError.message("No \(d.displayName) chart") }
                 let chart = PlayChart(try SimaiParser.parse(body))
-                let audio = try AudioIO.decode(url: ProjectStore.file(p, p.trackFile))
+                let audio = try AudioIO.decode(url: ProjectStore.file(p, p.trackFile), asIs: p.isImportedChart)
                 await MainActor.run {
-                    let s = PlayerSession(chart: chart, audio: audio, first: m.first, title: p.title, difficulty: d,
+                    let s = PlayerSession(chart: chart, audio: audio, first: m.firstOffset(d), title: p.title, difficulty: d,
                                           level: m.level(d) ?? "", settings: settings, autoplay: autoplay)
                     loadingPlayer = false
                     playLaunch = PlayLaunch(session: s)

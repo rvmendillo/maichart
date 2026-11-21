@@ -96,13 +96,15 @@ jobs:
           xcrun simctl bootstatus "$UDID" -b
           xcrun simctl install "$UDID" "$APP"
           mkdir -p ci-out/screens
-          for screen in home import project player tiles settings; do
+          for screen in home import project player tiles settings importing chart; do
             xcrun simctl terminate "$UDID" com.rvmendillo.maichartstudio || true
             xcrun simctl launch "$UDID" com.rvmendillo.maichartstudio -screen $screen
             case $screen in
               project) sleep 45 ;;
               player) sleep 30 ;;
               tiles) sleep 30 ;;
+              importing) sleep 4 ;;
+              chart) sleep 20 ;;
               *) sleep 12 ;;
             esac
             xcrun simctl io "$UDID" screenshot "ci-out/screens/$screen.png"

@@ -47,6 +47,8 @@ enum Pipeline {
                 if p.title == baseTitle, !score.title.trimmingCharacters(in: .whitespaces).isEmpty { p.title = score.title }
                 if p.artist.isEmpty { p.artist = score.composer }
                 try processScore(&p, score: score, render: render, progress: progress)
+            case .chart:
+                throw AppError.message("maimai charts are imported with “maimai chart” in New chart.")
             }
             progress("Cover art", 0.97)
             if let art = metadata.artwork, let jpg = CoverArt.normalize(art) {
@@ -77,7 +79,7 @@ enum Pipeline {
         case .pdf:
             progress("Optical music recognition", 0.05)
             return try PDFScoreReader.read(url: url) { progress("Recognising page \($0)", 0.05 + 0.15 * $1) }
-        case .audio:
+        case .audio, .chart:
             throw AppError.message("Not a score")
         }
     }
@@ -198,6 +200,12 @@ enum Pipeline {
 
     /// Regenerates charts from cached analysis (remix, option changes, offset changes).
     static func regenerate(_ p: inout SongProject) throws {
+        if p.source == .chart {
+            // imported charts are never rewritten; only the sync nudge goes into &first
+            try ChartImport.applyOffset(&p)
+            ProjectStore.save(p)
+            return
+        }
         guard let f = ProjectStore.loadFeatures(p) else { throw AppError.message("Analysis data missing — please re-import the song.") }
         try generate(&p, features: f, progress: { _, _ in })
         ProjectStore.save(p)
@@ -205,7 +213,7 @@ enum Pipeline {
 
     /// Re-renders a score-based project with another renderer / instrument / soundfont.
     static func rerender(_ p: inout SongProject, render: RenderSettings, progress: @escaping Progress) throws {
-        guard p.source != .audio else { return }
+        guard p.source != .audio && p.source != .chart else { return }
         let url = ProjectStore.file(p, "score.mid")
         let score = try MIDIFile.parse(data: Data(contentsOf: url), title: p.title)
         p.renderer = render.renderer
@@ -217,6 +225,7 @@ enum Pipeline {
     // MARK: Export
 
     static func level(_ p: SongProject) throws -> LevelPackager.Level {
+        if p.source == .chart { return try ChartImport.level(p) }
         let md = try Data(contentsOf: ProjectStore.file(p, "maidata.txt"))
         let track = try Data(contentsOf: ProjectStore.file(p, "track.mp3"))
         let bg = try? Data(contentsOf: ProjectStore.file(p, p.coverFile ?? "bg.jpg"))
@@ -226,7 +235,7 @@ enum Pipeline {
     /// Writes "<Title>.adx" (zip with the level folder) into Documents/AstroDX Export and returns it.
     static func exportADX(_ p: SongProject) throws -> URL {
         let lv = try level(p)
-        let url = ProjectStore.exportRoot.appendingPathComponent(LevelPackager.folderName(p.title) + ".adx")
+        let url = ProjectStore.exportRoot.appendingPathComponent(LevelPackager.folderName(p.levelFolderName ?? p.title) + ".adx")
         try LevelPackager.adx([lv]).write(to: url, options: .atomic)
         return url
     }

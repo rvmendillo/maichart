@@ -12,10 +12,18 @@ An iOS app that turns songs and sheet music into **maimai-style charts for Astro
 
 ## Using it
 
-1. **New chart** → pick a song (MP3, M4A/AAC, WAV, AIFF, FLAC), a **MIDI** file, **MusicXML** (`.musicxml`, `.xml`, `.mxl`) or a **PDF** score, or paste a direct file link.
+1. **New chart** → pick a song (MP3, M4A/AAC, WAV, AIFF, FLAC, OGG), a **MIDI** file, **MusicXML** (`.musicxml`, `.xml`, `.mxl`) or a **PDF** score, or paste a direct file link. The sheet closes and the progress panel shows the import.
 2. MaiChart Studio detects the beat grid and offset (or uses the score's exact timing), transcribes melody (Basic Pitch, on-device CoreML) and drums, and writes EASY / BASIC / ADVANCED / EXPERT / MASTER / Re:MASTER.
 3. Preview any difficulty with **autoplay** (eye button) or **play it** yourself (play button).
 4. **Share .adx** → open with AstroDX, or **Save to Files** → choose the AstroDX folder. The archive contains `Song/maidata.txt`, `Song/track.mp3`, `Song/bg.jpg` — never the internal WAV.
+
+### Existing maimai charts
+
+* **New chart → maimai chart** imports AstroDX / Majdata levels: a level folder (`maidata.txt` + `track.mp3` or `track.ogg` + `bg.jpg/png`, optional `pv.mp4`), a folder of levels (e.g. a copy of AstroDX's `levels` folder), or `.adx` / `.zip` archives — several at once.
+* **Import folder** (works like AstroDX's folder): drop the same kinds of items — or songs/scores to chart — into *Files › On My iPhone › MaiChart Studio › Import*. They're imported when the app opens (or with *Check Import folder now*); processed items move to `Import/Imported` (or `Import/Failed`).
+* `.adx` files can also be opened with MaiChart Studio from the Files app or the share sheet.
+* Imported charts are played exactly as they are (original audio decoded as-is, including Ogg Vorbis), can be nudged (`&first`), and are exported again with their folder name, audio, background, video and any other files. *Make my own charts for this song* runs MaiChart Studio's generator on the same audio.
+* Charts already in the library are recognised and not imported twice. UTAGE (`&inote_7`) charts are kept in the files and exports.
 
 ### Sync
 * Audio: tempo (incl. mid-song tempo changes), first downbeat and `&first` are detected from calibrated onsets (≈2–9 ms of the real attacks in tests).
@@ -49,6 +57,7 @@ MaiCore/        Swift package (platform independent, tested on Linux + iOS)
                     Audio (WAV, MP3, alignment), Player (judge engine), PianoTiles, OMR, Export
   Sources/CLAME     LAME 3.100 MP3 encoder (LGPL)
   Sources/CMiniMP3  minimp3 decoder (CC0)
+  Sources/CStbVorbis  stb_vorbis Ogg Vorbis decoder (MIT / public domain)
   Sources/maicli    developer CLI (chart/render/analyze/omr/mp3...)
 App/            SwiftUI iOS app
 project.yml     XcodeGen spec; .github/workflows/ios.yml builds the unsigned IPA
@@ -59,4 +68,4 @@ Core tests: `cd MaiCore && swift test`.
 
 ## Credits & licences
 
-GeneralUser GS (S. Christian Collins), Basic Pitch (Spotify, Apache-2.0), LAME (LGPL), minimp3 (CC0), simai syntax compatibility checked against SimaiSharp (Reflektone, MIT). Licences are included in the app (Settings → Open-source licences).
+GeneralUser GS (S. Christian Collins), Basic Pitch (Spotify, Apache-2.0), LAME (LGPL), minimp3 (CC0), stb_vorbis (MIT / public domain), simai syntax compatibility checked against SimaiSharp (Reflektone, MIT). Licences are included in the app (Settings → Open-source licences).

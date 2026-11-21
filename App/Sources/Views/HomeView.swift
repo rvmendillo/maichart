@@ -3,12 +3,23 @@ import UIKit
 import UniformTypeIdentifiers
 import MaiCore
 
+/// What the user chose in the New chart sheet. The sheet closes first; the picker or job starts afterwards
+/// from the home screen, so progress and errors are never hidden behind the sheet.
+enum ImportRequest: Equatable {
+    case song, chart, link(String), demo
+    /// Used by automated screenshots: import a file without the system picker.
+    case file(URL)
+}
+
 struct HomeView: View {
     @EnvironmentObject var library: Library
     @EnvironmentObject var settings: AppSettings
     @State private var showImport = false
     @State private var showSettings = false
     @State private var path: [SongProject] = []
+    @State private var pendingRequest: ImportRequest? = nil
+    @State private var pickerKind: ImportRequest = .song
+    @State private var showPicker = false
     var initialScreen: String? = nil
 
     let columns = [GridItem(.adaptive(minimum: 300), spacing: 14)]
@@ -30,8 +41,14 @@ struct HomeView: View {
                                 }
                             }
                         }
+                        inboxHint
                     }
                     .padding(16)
+                }
+                .fileImporter(isPresented: $showPicker,
+                              allowedContentTypes: pickerKind == .chart ? ImportSheet.chartTypes : ImportSheet.songTypes,
+                              allowsMultipleSelection: pickerKind == .chart) { result in
+                    handlePicked(result)
                 }
             }
             .navigationDestination(for: SongProject.self) { p in
@@ -43,22 +60,82 @@ struct HomeView: View {
                         .accessibilityIdentifier("settings")
                 }
             }
-            .sheet(isPresented: $showImport) {
-                ImportSheet { p in
+            .sheet(isPresented: $showImport, onDismiss: startPendingRequest) {
+                ImportSheet { request in
+                    pendingRequest = request
                     showImport = false
-                    if let p { path = [p] }
                 }
-                .environmentObject(library)
             }
             .sheet(isPresented: $showSettings) { SettingsView().environmentObject(settings) }
         }
-        .task {
-            if let s = initialScreen, s != "home" {
-                if library.projects.isEmpty && ["project", "player", "tiles"].contains(s) { _ = await library.createDemo() }
-                if s != "import", let p = library.projects.first { path = [p] }
-                if s == "import" { showImport = true }
-                if s == "settings" { showSettings = true }
+        .onChange(of: library.openRequest) { p in
+            guard let p else { return }
+            library.openRequest = nil
+            path = [p]
+        }
+        .task { await openInitialScreen() }
+    }
+
+    /// Runs what was chosen in the New chart sheet once the sheet is gone.
+    func startPendingRequest() {
+        guard let request = pendingRequest else { return }
+        pendingRequest = nil
+        switch request {
+        case .song, .chart:
+            pickerKind = request
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { showPicker = true }
+        case .link(let text):
+            Task { if let p = await library.importLink(text) { path = [p] } }
+        case .demo:
+            Task { if let p = await library.createDemo() { path = [p] } }
+        case .file(let url):
+            Task { if let p = await library.importFile(url) { path = [p] } }
+        }
+    }
+
+    func handlePicked(_ result: Result<[URL], Error>) {
+        switch result {
+        case .failure(let error):
+            library.errorMessage = error.localizedDescription
+        case .success(let urls):
+            guard !urls.isEmpty else { return }
+            let kind = pickerKind
+            Task {
+                if kind == .chart {
+                    let imported = await library.importCharts(urls)
+                    if imported.count == 1 { path = [imported[0]] }
+                } else if let p = await library.importFile(urls[0]) {
+                    path = [p]
+                }
             }
+        }
+    }
+
+    /// `-screen <name>` launch argument (automated screenshots).
+    func openInitialScreen() async {
+        guard let s = initialScreen, s != "home" else { return }
+        if library.projects.isEmpty && ["project", "player", "tiles", "chart"].contains(s) { _ = await library.createDemo() }
+        switch s {
+        case "import":
+            showImport = true
+        case "settings":
+            showSettings = true
+        case "importing":
+            // the New chart flow with a bundled file instead of the system picker
+            showImport = true
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
+            if let url = Bundle.main.url(forResource: "NeonSkyline", withExtension: "mid", subdirectory: "Demo") ?? Bundle.main.url(forResource: "NeonSkyline", withExtension: "mid") {
+                pendingRequest = .file(url)
+            }
+            showImport = false
+        case "chart":
+            // export the demo as .adx and import it back as a maimai chart
+            if let demo = library.projects.first(where: { $0.source != .chart }), let adx = library.exportADX(demo) {
+                let imported = await library.importCharts([adx])
+                if let p = imported.first ?? library.projects.first(where: { $0.source == .chart }) { path = [p] }
+            }
+        default:
+            if let p = library.projects.first { path = [p] }
         }
     }
 
@@ -72,10 +149,11 @@ struct HomeView: View {
                     Text("Charts for AstroDX · every difficulty · on-beat").font(MaiFont.bold(13)).foregroundColor(MaiColor.cyan)
                 }
             }
-            Text("Import a song (MP3, M4A, WAV), a MIDI / MusicXML score or a PDF score. MaiChart Studio finds the beat, follows the melody and drums, and writes EASY → Re:MASTER charts that build on each other.")
+            Text("Import a song (MP3, M4A, WAV, OGG), a MIDI / MusicXML score or a PDF score — or an existing maimai chart folder / .adx. MaiChart Studio finds the beat, follows the melody and drums, and writes EASY → Re:MASTER charts that build on each other.")
                 .font(MaiFont.body(14)).foregroundColor(.white.opacity(0.85))
             Button { showImport = true } label: { Label("New chart", systemImage: "plus.circle.fill") }
                 .buttonStyle(MaiButtonStyle(kind: .primary))
+                .disabled(library.isBusy)
                 .accessibilityIdentifier("new-chart")
         }
         .maiPanel()
@@ -87,9 +165,22 @@ struct HomeView: View {
             Text("No charts yet").font(MaiFont.heavy(18)).foregroundColor(.white)
             Button("Try the demo song") { Task { if let p = await library.createDemo() { path = [p] } } }
                 .buttonStyle(MaiButtonStyle(kind: .secondary))
+                .disabled(library.isBusy)
         }
         .frame(maxWidth: .infinity)
         .maiPanel(accent: MaiColor.cyan)
+    }
+
+    var inboxHint: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            SectionHeader(title: "Import folder", icon: "tray.and.arrow.down.fill")
+            Text("Like AstroDX: put chart folders, .adx / .zip files, songs or scores in Files › On My iPhone › MaiChart Studio › Import. They're added automatically when you open the app.")
+                .font(MaiFont.body(12)).foregroundColor(.white.opacity(0.75))
+            Button { Task { await library.scanInbox() } } label: { Label("Check Import folder now", systemImage: "arrow.clockwise") }
+                .buttonStyle(MaiButtonStyle(kind: .secondary, compact: true))
+                .disabled(library.isBusy)
+        }
+        .maiPanel(accent: MaiColor.mint)
     }
 }
 
@@ -102,16 +193,16 @@ struct ProjectCard: View {
                 Text(project.title).font(MaiFont.heavy(16)).foregroundColor(.white).lineLimit(1)
                 Text(project.artist.isEmpty ? project.source.label : project.artist).font(MaiFont.bold(12)).foregroundColor(MaiColor.cyan).lineLimit(1)
                 HStack(spacing: 4) {
-                    ForEach(Difficulty.allCases.filter { $0 >= .advanced }) { d in
-                        let i = d.rawValue - 1
-                        if i < project.levels.count {
-                            Text(project.levels[i])
-                                .font(MaiFont.heavy(12))
-                                .foregroundColor(d == .remaster ? MaiColor.violet : .white)
-                                .frame(minWidth: 28)
-                                .padding(.vertical, 3)
-                                .background(Capsule().fill(d == .remaster ? Color.white : MaiColor.difficulty(d)))
-                        }
+                    ForEach(Difficulty.allCases.filter { $0 >= .advanced && project.hasChart($0) }) { d in
+                        Text(project.levels[d.rawValue - 1])
+                            .font(MaiFont.heavy(12))
+                            .foregroundColor(d == .remaster ? MaiColor.violet : .white)
+                            .frame(minWidth: 28)
+                            .padding(.vertical, 3)
+                            .background(Capsule().fill(d == .remaster ? Color.white : MaiColor.difficulty(d)))
+                    }
+                    if project.isImportedChart {
+                        Image(systemName: "square.stack.3d.up.fill").font(.system(size: 11, weight: .bold)).foregroundColor(.white.opacity(0.7))
                     }
                 }
             }
@@ -123,14 +214,21 @@ struct ProjectCard: View {
 }
 
 struct ImportSheet: View {
-    @EnvironmentObject var library: Library
-    var onDone: (SongProject?) -> Void
-    @State private var pick = false
+    var onRequest: (ImportRequest?) -> Void
     @State private var link = ""
 
-    static let types: [UTType] = {
+    static let songTypes: [UTType] = {
         var t: [UTType] = [.audio, .mp3, .mpeg4Audio, .wav, .aiff, .midi, .pdf, .xml]
-        for ext in ["musicxml", "mxl", "mid", "midi", "m4a", "flac", "kar"] { if let u = UTType(filenameExtension: ext) { t.append(u) } }
+        for ext in ["musicxml", "mxl", "mid", "midi", "m4a", "flac", "kar", "ogg"] { if let u = UTType(filenameExtension: ext) { t.append(u) } }
+        return t
+    }()
+
+    /// Folders (a level, a folder of levels, AstroDX's levels folder) and archives. `.data` keeps .adx files
+    /// selectable even when another app (AstroDX) owns the .adx type.
+    static let chartTypes: [UTType] = {
+        var t: [UTType] = [.folder, .zip, .data]
+        if let u = UTType("com.astrodx.adx") { t.append(u) }
+        if let u = UTType(filenameExtension: "adx") { t.append(u) }
         return t
     }()
 
@@ -140,9 +238,10 @@ struct ImportSheet: View {
                 MaiBackground(animated: false)
                 ScrollView {
                     VStack(spacing: 14) {
-                        source("Song audio", "MP3 · M4A · WAV · FLAC. MP3s are kept bit-exact; the beat grid and offset are detected automatically.", "waveform", MaiColor.pink)
-                        source("MIDI or MusicXML", "Exact notes and tempo. Rendered to a 320 kbps MP3 with the built-in SoundFont.", "pianokeys", MaiColor.cyan)
-                        source("PDF sheet music", "Printed scores are read with on-device optical music recognition, then rendered.", "doc.richtext", MaiColor.yellow)
+                        source("Song audio", "MP3 · M4A · WAV · OGG · FLAC. MP3s are kept bit-exact; the beat grid and offset are detected automatically.", "waveform", MaiColor.pink, .song)
+                        source("MIDI or MusicXML", "Exact notes and tempo. Rendered to a 320 kbps MP3 with the built-in SoundFont.", "pianokeys", MaiColor.cyan, .song)
+                        source("PDF sheet music", "Printed scores are read with on-device optical music recognition, then rendered.", "doc.richtext", MaiColor.yellow, .song)
+                        source("maimai chart", "An AstroDX / Majdata level folder (maidata.txt + track.mp3/ogg + bg), a folder of levels, or .adx / .zip files — several at once. Play them here or send them to AstroDX.", "square.stack.3d.up.fill", MaiColor.violet, .chart)
                         VStack(alignment: .leading, spacing: 8) {
                             SectionHeader(title: "From a link", icon: "link")
                             TextField("https://…/song.mp3", text: $link)
@@ -152,12 +251,12 @@ struct ImportSheet: View {
                                 .background(RoundedRectangle(cornerRadius: 12).fill(Color.white.opacity(0.9)))
                             Text("Direct links to audio, MIDI, MusicXML or PDF files. Video sites such as YouTube aren't supported — import audio you own instead.")
                                 .font(MaiFont.body(11)).foregroundColor(.white.opacity(0.7))
-                            Button("Download & chart") { Task { onDone(await library.importLink(link)) } }
+                            Button("Download & chart") { onRequest(.link(link)) }
                                 .buttonStyle(MaiButtonStyle(kind: .secondary, compact: true))
                                 .disabled(link.isEmpty)
                         }
                         .maiPanel(accent: MaiColor.mint)
-                        Button("Use the demo song") { Task { onDone(await library.createDemo()) } }
+                        Button("Use the demo song") { onRequest(.demo) }
                             .buttonStyle(MaiButtonStyle(kind: .secondary, compact: true))
                     }
                     .padding(16)
@@ -165,15 +264,12 @@ struct ImportSheet: View {
             }
             .navigationTitle("New chart")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Close") { onDone(nil) } } }
-            .fileImporter(isPresented: $pick, allowedContentTypes: Self.types, allowsMultipleSelection: false) { result in
-                if case .success(let urls) = result, let u = urls.first { Task { onDone(await library.importFile(u)) } }
-            }
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Close") { onRequest(nil) } } }
         }
     }
 
-    func source(_ title: String, _ text: String, _ icon: String, _ color: Color) -> some View {
-        Button { pick = true } label: {
+    func source(_ title: String, _ text: String, _ icon: String, _ color: Color, _ request: ImportRequest) -> some View {
+        Button { onRequest(request) } label: {
             HStack(spacing: 14) {
                 Image(systemName: icon).font(.system(size: 26, weight: .bold)).foregroundColor(.white)
                     .frame(width: 54, height: 54).background(Circle().fill(color))
@@ -182,10 +278,12 @@ struct ImportSheet: View {
                     Text(text).font(MaiFont.body(12)).foregroundColor(.white.opacity(0.75)).multilineTextAlignment(.leading)
                 }
                 Spacer(minLength: 0)
+                Image(systemName: "chevron.right").foregroundColor(.white.opacity(0.6))
             }
             .maiPanel(accent: color, padding: 12)
         }
         .buttonStyle(.plain)
+        .accessibilityIdentifier("import-\(title)")
     }
 }
 
@@ -238,7 +336,7 @@ struct LicensesView: View {
     var body: some View {
         NavigationStack {
             List {
-                ForEach(["GeneralUser-GS-LICENSE", "BasicPitch-LICENSE", "LAME-LGPL", "minimp3-CC0", "SimaiSharp-MIT"], id: \.self) { name in
+                ForEach(["GeneralUser-GS-LICENSE", "BasicPitch-LICENSE", "LAME-LGPL", "minimp3-CC0", "stb_vorbis-MIT", "SimaiSharp-MIT"], id: \.self) { name in
                     NavigationLink(name) {
                         ScrollView {
                             Text((Bundle.main.url(forResource: name, withExtension: "txt", subdirectory: "Licenses") ?? Bundle.main.url(forResource: name, withExtension: "txt"))

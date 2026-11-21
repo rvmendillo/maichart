@@ -213,14 +213,22 @@ public enum SimaiParser {
             var override = timing
             var declStart = s.startIndex
             if let first = s.firstIndex(of: "#") {
-                let last = s.lastIndex(of: "#")!
-                declStart = s.index(after: last)
-                let delayValue = try number(s[s.startIndex..<first], t)
-                if first != last {
-                    path.delay = delayValue
+                let afterFirst = s.index(after: first)
+                if afterFirst < s.endIndex, s[afterFirst] == "#" {
+                    // [delay##duration] or [delay##bpm#duration]
+                    path.delay = try number(s[s.startIndex..<first], t)
+                    declStart = s.index(after: afterFirst)
+                    let rest = s[declStart...]
+                    if let h = rest.firstIndex(of: "#") {
+                        override.tempo = try number(rest[rest.startIndex..<h], t)
+                        declStart = rest.index(after: h)
+                    }
                 } else {
-                    override.tempo = delayValue
+                    // [bpm#duration]; an empty bpm ([#1.5]) keeps the current tempo
+                    let bpmText = s[s.startIndex..<first]
+                    if !bpmText.trimmingCharacters(in: .whitespaces).isEmpty { override.tempo = try number(bpmText, t) }
                     path.delay = override.secondsPerQuarter
+                    declStart = afterFirst
                 }
             }
             let decl = s[declStart...]
@@ -355,8 +363,10 @@ public enum SimaiParser {
         var value = ""
         var t = text
         if t.hasPrefix("\u{FEFF}") { t.removeFirst() }
-        for rawLine in t.components(separatedBy: "\n") {
-            let line = rawLine.hasSuffix("\r") ? String(rawLine.dropLast()) : rawLine
+        // split on every newline style (LF, CRLF, CR) the same way on every platform
+        for sub in t.split(omittingEmptySubsequences: false, whereSeparator: { $0.isNewline }) {
+            var line = String(sub)
+            if line.hasPrefix("\u{FEFF}") { line.removeFirst() }
             if line.hasPrefix("&") {
                 if let k = key { result.append((k, value.trimmingCharacters(in: .whitespacesAndNewlines))) }
                 let parts = line.dropFirst().split(separator: "=", maxSplits: 1, omittingEmptySubsequences: false)
