@@ -31,16 +31,23 @@ struct ProjectView: View {
     var body: some View {
         ZStack {
             MaiBackground()
-            ScrollView {
-                VStack(spacing: 16) {
-                    header
-                    difficultyList
-                    syncPanel
-                    actionsPanel
-                    audioPanel
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(spacing: 16) {
+                        header
+                        difficultyList
+                        syncPanel
+                        actionsPanel.id("actions")
+                        audioPanel
+                    }
+                    .padding(16)
+                    .padding(.bottom, 40)
                 }
-                .padding(16)
-                .padding(.bottom, 40)
+                .onAppear {
+                    if autoOpen == "bottom" {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { withAnimation { proxy.scrollTo("actions", anchor: .top) } }
+                    }
+                }
             }
             if loadingPlayer { ProgressView().tint(.white).scaleEffect(1.6) }
         }

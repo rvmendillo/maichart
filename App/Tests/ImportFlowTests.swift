@@ -39,6 +39,8 @@ final class ImportFlowTests: XCTestCase {
         let project = try XCTUnwrap(p, "the picked file must turn into a project")
         defer { lib.delete(project) }
         XCTAssertEqual(project.levels.count, 6)
+        XCTAssertNil(project.title.range(of: "^[0-9A-Fa-f]{8}-", options: .regularExpression), "title must not carry a temporary ID: \(project.title)")
+        print("Picked MIDI became: \(project.title)")
         XCTAssertNil(lib.job, "progress panel is closed afterwards")
         XCTAssertTrue(lib.projects.contains { $0.id == project.id })
         // unsupported files explain themselves instead of silently doing nothing

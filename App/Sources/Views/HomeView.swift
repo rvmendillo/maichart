@@ -52,7 +52,7 @@ struct HomeView: View {
                 }
             }
             .navigationDestination(for: SongProject.self) { p in
-                ProjectView(project: p, autoOpen: initialScreen == "player" || initialScreen == "tiles" ? initialScreen : nil)
+                ProjectView(project: p, autoOpen: initialScreen == "player" || initialScreen == "tiles" ? initialScreen : (initialScreen == "chart-actions" ? "bottom" : nil))
             }
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
@@ -114,7 +114,7 @@ struct HomeView: View {
     /// `-screen <name>` launch argument (automated screenshots).
     func openInitialScreen() async {
         guard let s = initialScreen, s != "home" else { return }
-        if library.projects.isEmpty && ["project", "player", "tiles", "chart"].contains(s) { _ = await library.createDemo() }
+        if library.projects.isEmpty && ["project", "player", "tiles", "chart", "chart-actions"].contains(s) { _ = await library.createDemo() }
         switch s {
         case "import":
             showImport = true
@@ -128,9 +128,11 @@ struct HomeView: View {
                 pendingRequest = .file(url)
             }
             showImport = false
-        case "chart":
+        case "chart", "chart-actions":
             // export the demo as .adx and import it back as a maimai chart
-            if let demo = library.projects.first(where: { $0.source != .chart }), let adx = library.exportADX(demo) {
+            if let existing = library.projects.first(where: { $0.source == .chart }) {
+                path = [existing]
+            } else if let demo = library.projects.first(where: { $0.source != .chart }), let adx = library.exportADX(demo) {
                 let imported = await library.importCharts([adx])
                 if let p = imported.first ?? library.projects.first(where: { $0.source == .chart }) { path = [p] }
             }

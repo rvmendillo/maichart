@@ -72,8 +72,12 @@ final class Library: ObservableObject {
         guard !isBusy else { notice = Notice(title: "Please wait", text: "Another import is still running."); return nil }
         job = JobState(title: "Opening \(url.lastPathComponent)", stage: "Reading the file", progress: 0.01)
         let scoped = url.startAccessingSecurityScopedResource()
-        // copy first so the security scope can end early (coordinated: downloads iCloud files if needed)
-        let tmp = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + "-" + url.lastPathComponent)
+        // copy first so the security scope can end early (coordinated: downloads iCloud files if needed).
+        // A unique folder keeps the original file name, which becomes the title when the file has no tags.
+        let tmpDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try? FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
+        let tmp = tmpDir.appendingPathComponent(url.lastPathComponent)
+        defer { try? FileManager.default.removeItem(at: tmpDir) }
         let copied: Result<Void, Error> = await Task.detached(priority: .userInitiated) {
             Result { try ChartImport.coordinatedCopy(url, to: tmp) }
         }.value
@@ -84,7 +88,6 @@ final class Library: ObservableObject {
             return nil
         }
         guard Pipeline.kind(of: tmp) != nil else {
-            try? FileManager.default.removeItem(at: tmp)
             errorMessage = "Unsupported file type .\(url.pathExtension). Use MP3/M4A/WAV/OGG/FLAC, MIDI, MusicXML (.musicxml/.xml/.mxl) or a PDF score. For maimai charts use “maimai chart”."
             return nil
         }
@@ -94,7 +97,6 @@ final class Library: ObservableObject {
         let result = await run("Creating charts for \(meta.title ?? url.deletingPathExtension().lastPathComponent)") { progress in
             try Pipeline.createProject(from: tmp, metadata: meta, render: render, progress: progress)
         }
-        try? FileManager.default.removeItem(at: tmp)
         return result
     }
 
