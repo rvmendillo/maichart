@@ -92,12 +92,14 @@ struct ProjectView: View {
             ForEach(Difficulty.allCases) { d in
                 let i = d.rawValue - 1
                 HStack(spacing: 10) {
-                    DifficultyBadge(difficulty: d, level: i < project.levels.count ? project.levels[i] : "-")
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("\(i < project.noteCounts.count ? project.noteCounts[i] : 0) notes").font(MaiFont.heavy(14)).foregroundColor(.white)
-                        Text(i < project.levelValues.count ? String(format: "internal %.1f", project.levelValues[i]) : "").font(MaiFont.body(11)).foregroundColor(.white.opacity(0.6))
+                    VStack(alignment: .leading, spacing: 5) {
+                        DifficultyBadge(difficulty: d, level: i < project.levels.count ? project.levels[i] : "-")
+                        Text("\(i < project.noteCounts.count ? project.noteCounts[i] : 0) notes" + (i < project.levelValues.count ? String(format: " · internal %.1f", project.levelValues[i]) : ""))
+                            .font(MaiFont.bold(12)).foregroundColor(.white.opacity(0.8))
+                            .lineLimit(1).minimumScaleFactor(0.75)
+                            .padding(.leading, 4)
                     }
-                    Spacer()
+                    Spacer(minLength: 6)
                     Button { openPlayer(d, autoplay: true) } label: { Image(systemName: "eye.fill") }
                         .buttonStyle(MaiButtonStyle(kind: .secondary, compact: true))
                     Button { openPlayer(d, autoplay: false) } label: { Image(systemName: "play.fill") }

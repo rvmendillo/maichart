@@ -145,10 +145,13 @@ struct DifficultyBadge: View {
             Text(difficulty.displayName)
                 .font(MaiFont.heavy(compact ? 10 : 12))
                 .foregroundColor(isRe ? MaiColor.violet : .white)
+                .lineLimit(1)
             Text(level)
                 .font(MaiFont.title(compact ? 15 : 20))
                 .foregroundColor(isRe ? MaiColor.violet : .white)
+                .lineLimit(1)
         }
+        .fixedSize() // never wrap "ADVANCED" / "Re:MASTER"
         .padding(.horizontal, compact ? 9 : 12)
         .padding(.vertical, compact ? 4 : 6)
         .background(Capsule().fill(isRe ? AnyShapeStyle(LinearGradient(colors: [.white, Color(red: 0.92, green: 0.86, blue: 1)], startPoint: .top, endPoint: .bottom)) : AnyShapeStyle(c)))
