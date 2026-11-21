@@ -1,0 +1,73 @@
+[
+ {
+  "file": "pop160.mid",
+  "bpm": 160,
+  "sections": [
+   {
+    "name": "intro",
+    "start_beat": 0,
+    "bars": 4
+   },
+   {
+    "name": "verse",
+    "start_beat": 16,
+    "bars": 8
+   },
+   {
+    "name": "build",
+    "start_beat": 48,
+    "bars": 4
+   },
+   {
+    "name": "chorus",
+    "start_beat": 64,
+    "bars": 8
+   },
+   {
+    "name": "bridge",
+    "start_beat": 96,
+    "bars": 4
+   },
+   {
+    "name": "final",
+    "start_beat": 112,
+    "bars": 8
+   },
+   {
+    "name": "outro",
+    "start_beat": 144,
+    "bars": 2
+   }
+  ],
+  "bars": 38
+ },
+ {
+  "file": "ballad_tempo.mid",
+  "tempo": [
+   [
+    0,
+    90
+   ],
+   [
+    32,
+    120
+   ]
+  ],
+  "time_signatures": [
+   [
+    0,
+    4,
+    4
+   ],
+   [
+    64,
+    3,
+    4
+   ]
+  ]
+ },
+ {
+  "file": "piano_solo.mid",
+  "bpm": 120
+ }
+]
