@@ -13,12 +13,12 @@ enum AudioIO {
     static let audioExtensions: Set<String> = ["mp3", "m4a", "aac", "wav", "aif", "aiff", "caf", "flac", "mp4", "alac", "ogg", "opus"]
 
     /// Decodes an audio file with Apple's decoders. MP3s are decoded after removing the Xing/Info frame,
-    /// i.e. exactly the bytes exported as track.mp3, so the timeline is the one AstroDX on iOS plays.
+    /// i.e. exactly the bytes exported as track.mp3, so analysis, the player and the export share one timeline.
     static func decode(url: URL) throws -> AudioSamples {
         var url = url
         var tmp: URL? = nil
         if url.pathExtension.lowercased() == "mp3" {
-            // decode exactly what AstroDX will play: the Info-frame-free file, through Apple's decoder
+            // decode exactly the exported bytes (Info-frame-free file) through the system decoder
             let data = try Data(contentsOf: url)
             let stripped = MP3Tools.removingInfoFrame(data)
             if stripped.removed {

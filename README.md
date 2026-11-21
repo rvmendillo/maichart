@@ -20,8 +20,8 @@ An iOS app that turns songs and sheet music into **maimai-style charts for Astro
 ### Sync
 * Audio: tempo (incl. mid-song tempo changes), first downbeat and `&first` are detected from calibrated onsets (≈2–9 ms of the real attacks in tests).
 * MP3s you import are kept **bit-exact** (only the Xing/Info header frame is removed so every decoder starts on the same sample); the beat grid is measured on exactly that file through iOS's decoder.
-* MIDI/MusicXML/PDF renders and M4A/WAV/FLAC imports: → 320 kbps CBR MP3 with the LAME encoder delay (576 samples) pre-compensated. The MP3 is then decoded again **with iOS's own MP3 decoder** (what AstroDX on iPhone/iPad uses) and cross-correlated with the WAV/source: lag, correlation, SNR, spectral distance, length and clipping are shown in the app and in **Studio**; any residual lag is folded into `&first`.
-* Decoders that keep the standard 529-sample MP3 decoder delay (e.g. minimp3/FFmpeg without gapless info) play the same file 12 ms later — inside the ±16.7 ms CRITICAL PERFECT window.
+* MIDI/MusicXML/PDF renders and M4A/WAV/FLAC imports: → 320 kbps CBR MP3 with the LAME encoder delay (576 samples) pre-compensated. The MP3 is then decoded again **with iOS's system MP3 decoder** and cross-correlated with the WAV/source: lag, correlation, SNR, spectral distance, length and clipping are shown in the app and in **Studio**; any residual lag is folded into `&first`.
+* Decoders that keep the standard 529-sample MP3 decoder delay (e.g. minimp3/FFmpeg without gapless info) play the same file 12 ms later — inside the ±16.7 ms CRITICAL PERFECT window. Which decoder AstroDX uses internally isn't documented, so if a level feels consistently early/late, nudge it once (below) or use AstroDX's own offset setting.
 * If a chart still feels early/late in AstroDX, use **Sync & offset** (±1/5/10 ms nudges written into `&first`).
 
 ## Chart design

@@ -126,7 +126,7 @@ enum Pipeline {
         try generate(&p, features: features, progress: progress)
     }
 
-    /// Encodes track.mp3 and verifies it with Apple's decoder (what AstroDX on iOS uses). Any remaining
+    /// Encodes track.mp3 and verifies it with iOS's system MP3 decoder. Any remaining
     /// offset between the WAV/source and the decoded MP3 is written into &first via trackShift.
     static func encodeTrack(_ p: inout SongProject, from audio: AudioSamples, to url: URL, progress: @escaping (Double) -> Void) throws {
         let r = try TrackProducer.makeMP3(from: audio, targetDecoderDelay: 0, progress: progress)
