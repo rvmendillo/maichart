@@ -50,6 +50,35 @@ case "chart":
             print("wrote \(o)/maidata.txt")
         }
     } catch { fail("error: \(error)") }
+case "render":
+    // maicli render <song.mid> <soundfont.sf2> <out.wav> [leadIn]
+    guard let path = args.popFirst(), let sfPath = args.popFirst(), let out = args.popFirst() else { fail("usage: maicli render <mid> <sf2> <out.wav> [leadIn]") }
+    let lead = Double(args.popFirst() ?? "0") ?? 0
+    do {
+        let score = try loadScore(path)
+        let t0 = Date()
+        let sf = try SoundFont(url: URL(fileURLWithPath: sfPath))
+        let t1 = Date()
+        var o = MIDIRenderer.Options()
+        o.leadIn = lead
+        let buf = MIDIRenderer.render(score: score, soundFont: sf, options: o)
+        let t2 = Date()
+        try WAVFile.write(buf, to: URL(fileURLWithPath: out), format: .int16)
+        print(String(format: "loaded sf2 in %.2fs (%d presets), rendered %.1fs of audio in %.2fs, peak %.3f rms %.4f", t1.timeIntervalSince(t0), sf.presets.count, buf.duration, t2.timeIntervalSince(t1), buf.peak, buf.rms))
+    } catch { fail("error: \(error)") }
+case "mp3":
+    // maicli mp3 <in.wav> <out.mp3>
+    guard let inp = args.popFirst(), let out = args.popFirst() else { fail("usage: maicli mp3 <in.wav> <out.mp3>") }
+    do {
+        let buf = try WAVFile.read(url: URL(fileURLWithPath: inp))
+        let t0 = Date()
+        let r = try TrackProducer.makeMP3(from: buf)
+        try r.mp3.write(to: URL(fileURLWithPath: out))
+        print(String(format: "encoded in %.2fs, %d bytes, precompensated=%@, shift=%.4fs", Date().timeIntervalSince(t0), r.mp3.count, r.precompensated ? "yes" : "no", r.timelineShift))
+        print("verify: \(r.report)")
+        let g = try MP3Decoder.decode(r.mp3, gapless: true)
+        print("gapless decode frames \(g.buffer.frameCount) vs naive \(try MP3Decoder.decode(r.mp3).buffer.frameCount), tag=\(g.hasInfoTag)")
+    } catch { fail("error: \(error)") }
 case "simai-check":
     guard let path = args.popFirst() else { fail("usage: maicli simai-check <maidata.txt>") }
     do {
