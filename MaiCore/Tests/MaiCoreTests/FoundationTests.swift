@@ -39,7 +39,7 @@ final class FoundationTests: XCTestCase {
     }
 
     func testWAVRoundTrip() throws {
-        let buf = AudioBuffer(sampleRate: 44100, channels: [[0, 0.5, -0.5, 0.25], [0.1, -0.1, 0.9, -1.0]])
+        let buf = AudioSamples(sampleRate: 44100, channels: [[0, 0.5, -0.5, 0.25], [0.1, -0.1, 0.9, -1.0]])
         for fmt in [WAVFile.SampleFormat.int16, .int24, .float32] {
             let d = WAVFile.encode(buf, format: fmt, dither: false)
             let back = try WAVFile.read(data: d)

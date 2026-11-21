@@ -76,7 +76,7 @@ public enum MIDIRenderer {
     }
 
     public static func render(score: Score, soundFont: SoundFont, options: Options = Options(),
-                              progress: ((Double) -> Void)? = nil) -> AudioBuffer {
+                              progress: ((Double) -> Void)? = nil) -> AudioSamples {
         let synth = Synthesizer(soundFont: soundFont, sampleRate: options.sampleRate)
         synth.reverbEnabled = options.reverb
         let evs = events(for: score, instrumentOverride: options.instrumentOverride)
@@ -105,7 +105,7 @@ public enum MIDIRenderer {
                 }
             }
         }
-        var buf = AudioBuffer(sampleRate: options.sampleRate, channels: [left, right])
+        var buf = AudioSamples(sampleRate: options.sampleRate, channels: [left, right])
         if let target = options.normalizePeak {
             let peak = buf.peak
             if peak > 1e-6 { buf.applyGain(target / peak) }

@@ -31,7 +31,7 @@ public enum MP3Encoder {
     /// Standard LAME encoder delay (576) + MP3 decoder delay (528 + 1) in samples.
     public static let nominalDelay = 1105
 
-    public static func encode(_ input: AudioBuffer, options: Options = Options(), progress: ((Double) -> Void)? = nil) throws -> Data {
+    public static func encode(_ input: AudioSamples, options: Options = Options(), progress: ((Double) -> Void)? = nil) throws -> Data {
         let buffer = input.channelCount > 2 ? input.stereo() : input
         guard buffer.channelCount == 1 || buffer.channelCount == 2 else { throw MP3Error.unsupportedChannels }
         guard let gfp = lame_init() else { throw MP3Error.encoderInit }
@@ -90,7 +90,7 @@ public enum MP3Encoder {
 /// minimp3 based decoder.
 public enum MP3Decoder {
     public struct Result {
-        public var buffer: AudioBuffer
+        public var buffer: AudioSamples
         public var hasInfoTag: Bool
         /// Encoder + decoder delay declared by a LAME tag (samples), 0 when absent.
         public var tagDelay: Int
@@ -108,7 +108,7 @@ public enum MP3Decoder {
         defer { cmp3_free(&res) }
         let count = res.frames * Int(res.channels)
         let interleaved = Array(UnsafeBufferPointer(start: res.pcm, count: count))
-        let buf = AudioBuffer(sampleRate: Double(res.sample_rate), interleaved: interleaved, channelCount: Int(res.channels))
+        let buf = AudioSamples(sampleRate: Double(res.sample_rate), interleaved: interleaved, channelCount: Int(res.channels))
         return Result(buffer: buf, hasInfoTag: res.has_vbr_tag != 0, tagDelay: Int(res.tag_delay), tagPadding: Int(res.tag_padding))
     }
 }

@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import UniformTypeIdentifiers
 import MaiCore
 
@@ -133,7 +134,7 @@ struct StudioView: View {
             do {
                 let mp3 = try AudioIO.decode(url: ProjectStore.file(p, p.trackFile))
                 let refURL = ProjectStore.file(p, "reference.wav")
-                let ref: AudioBuffer
+                let ref: AudioSamples
                 if FileManager.default.fileExists(atPath: refURL.path) { ref = try WAVFile.read(url: refURL) }
                 else { ref = try AudioIO.decode(url: ProjectStore.file(p, p.sourceFile)) }
                 // a short loud excerpt (aligned by the measured lag) at 1:1 sample resolution

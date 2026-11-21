@@ -118,7 +118,7 @@ enum PlayfieldRenderer {
                     continue
                 }
                 if judged || p > 1.08 { continue }
-                let scale = 0.45 + 0.55 * min(1, max(0, p) * 1.8)
+                let scale = CGFloat(0.45 + 0.55 * min(1, max(0, p) * 1.8))
                 let alpha = min(1, (p + 0.15) * 4)
                 let pos = polar(ang, laneR(p))
                 if n.kind == .star {
@@ -157,8 +157,8 @@ enum PlayfieldRenderer {
                 default: ec = MaiColor.mint
                 }
                 let f = min(1, age / 0.35)
-                let rr = R * (0.05 + 0.13 * f)
-                ctx.stroke(Path(ellipseIn: CGRect(x: pos.x - rr, y: pos.y - rr, width: 2 * rr, height: 2 * rr)), with: .color(ec.opacity(1 - f)), lineWidth: R * 0.03 * (1 - f) + 1)
+                let rr = R * CGFloat(0.05 + 0.13 * f)
+                ctx.stroke(Path(ellipseIn: CGRect(x: pos.x - rr, y: pos.y - rr, width: 2 * rr, height: 2 * rr)), with: .color(ec.opacity(1 - f)), lineWidth: R * 0.03 * CGFloat(1 - f) + 1)
                 if e.isBreak || e.firework {
                     for k in 0..<10 {
                         let a = Double(k) * 36 + age * 60
@@ -171,7 +171,7 @@ enum PlayfieldRenderer {
             }
             // judgement text pops slightly towards the centre
             let ta = max(0, 1 - max(0, age - 0.35) / 0.3)
-            let bounce = age < 0.08 ? 1.25 - age * 3 : 1.0
+            let bounce: CGFloat = age < 0.08 ? CGFloat(1.25 - age * 3) : 1.0
             let dir = e.position.length > 0.01 ? e.position * (1 / e.position.length) : Vec2(0, -1)
             let tp = pt(e.position - dir * 0.22)
             let label: Text

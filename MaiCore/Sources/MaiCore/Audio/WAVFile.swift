@@ -14,7 +14,7 @@ public enum WAVError: Error, LocalizedError {
 
 /// Minimal but complete PCM/float WAV reader and writer (8/16/24/32-bit int, 32/64-bit float, WAVE_FORMAT_EXTENSIBLE).
 public enum WAVFile {
-    public static func read(data: Data) throws -> AudioBuffer {
+    public static func read(data: Data) throws -> AudioSamples {
         let b = [UInt8](data)
         guard b.count >= 12, b[0] == 0x52, b[1] == 0x49, b[2] == 0x46, b[3] == 0x46,
               b[8] == 0x57, b[9] == 0x41, b[10] == 0x56, b[11] == 0x45 else { throw WAVError.notRIFF }
@@ -47,7 +47,7 @@ public enum WAVFile {
         let bytesPerSample = bits / 8
         guard bytesPerSample > 0 else { throw WAVError.unsupportedFormat("bits=\(bits)") }
         let frames = dataLen / (bytesPerSample * channels)
-        var out = AudioBuffer(sampleRate: Double(rate), channelCount: channels, frames: frames)
+        var out = AudioSamples(sampleRate: Double(rate), channelCount: channels, frames: frames)
         b.withUnsafeBufferPointer { src in
             for c in 0..<channels {
                 out.channels[c].withUnsafeMutableBufferPointer { dst in
@@ -90,14 +90,14 @@ public enum WAVFile {
         return out
     }
 
-    public static func read(url: URL) throws -> AudioBuffer {
+    public static func read(url: URL) throws -> AudioSamples {
         try read(data: try Data(contentsOf: url))
     }
 
     public enum SampleFormat { case int16, int24, float32 }
 
     /// Encodes the buffer. 16/24-bit output uses TPDF dither so quiet passages stay clean.
-    public static func encode(_ buffer: AudioBuffer, format: SampleFormat = .int16, dither: Bool = true) -> Data {
+    public static func encode(_ buffer: AudioSamples, format: SampleFormat = .int16, dither: Bool = true) -> Data {
         let ch = buffer.channelCount
         let frames = buffer.frameCount
         let bits: Int
@@ -145,7 +145,7 @@ public enum WAVFile {
         return Data(d)
     }
 
-    public static func write(_ buffer: AudioBuffer, to url: URL, format: SampleFormat = .int16) throws {
+    public static func write(_ buffer: AudioSamples, to url: URL, format: SampleFormat = .int16) throws {
         try encode(buffer, format: format).write(to: url)
     }
 }

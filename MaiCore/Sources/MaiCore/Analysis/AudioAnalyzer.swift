@@ -51,7 +51,7 @@ public enum AudioAnalyzer {
     // MARK: Public entry
 
     /// Analyses audio. Supply Basic Pitch note events (times in seconds) when available.
-    public static func analyze(_ audio: AudioBuffer, transcription: [BasicPitch.NoteEvent]? = nil,
+    public static func analyze(_ audio: AudioSamples, transcription: [BasicPitch.NoteEvent]? = nil,
                                progress: ((Double, String) -> Void)? = nil) -> AudioAnalysis {
         progress?(0.02, "Preparing audio")
         let mono = audio.mono()

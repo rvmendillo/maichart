@@ -86,7 +86,7 @@ case "analyze":
     do {
         let url = URL(fileURLWithPath: path)
         let data = try Data(contentsOf: url)
-        let buf: AudioBuffer
+        let buf: AudioSamples
         if path.lowercased().hasSuffix(".mp3") { buf = try MP3Decoder.decode(MP3Tools.removingInfoFrame(data).data).buffer } else { buf = try WAVFile.read(data: data) }
         let t0 = Date()
         var transcription: [BasicPitch.NoteEvent]? = nil

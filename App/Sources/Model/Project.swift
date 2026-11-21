@@ -139,6 +139,7 @@ final class AppSettings: ObservableObject {
     private let d = UserDefaults.standard
 
     init() {
+        let d = UserDefaults.standard
         noteSpeed = d.object(forKey: "noteSpeed") as? Double ?? 7.0
         touchSpeed = d.object(forKey: "touchSpeed") as? Double ?? 6.5
         playerOffsetMs = d.object(forKey: "playerOffsetMs") as? Double ?? 0

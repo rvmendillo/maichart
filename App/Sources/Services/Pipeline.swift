@@ -24,7 +24,7 @@ enum Pipeline {
 
     // MARK: Create
 
-    static func createProject(from url: URL, metadata: AudioIO.Metadata, render: RenderSettings, progress: Progress) throws -> SongProject {
+    static func createProject(from url: URL, metadata: AudioIO.Metadata, render: RenderSettings, progress: @escaping Progress) throws -> SongProject {
         guard let kind = kind(of: url) else {
             throw AppError.message("Unsupported file type .\(url.pathExtension). Use MP3/M4A/WAV, MIDI, MusicXML (.musicxml/.xml/.mxl) or a PDF score.")
         }
@@ -64,7 +64,7 @@ enum Pipeline {
         }
     }
 
-    static func loadScore(_ p: SongProject, progress: Progress) throws -> Score {
+    static func loadScore(_ p: SongProject, progress: @escaping Progress) throws -> Score {
         let url = ProjectStore.file(p, p.sourceFile)
         let data = try Data(contentsOf: url)
         switch p.source {
@@ -84,7 +84,7 @@ enum Pipeline {
 
     // MARK: Audio sources
 
-    static func processAudio(_ p: inout SongProject, progress: Progress) throws {
+    static func processAudio(_ p: inout SongProject, progress: @escaping Progress) throws {
         let dir = ProjectStore.dir(p.id)
         let srcURL = dir.appendingPathComponent(p.sourceFile)
         progress("Decoding audio", 0.04)
@@ -99,7 +99,7 @@ enum Pipeline {
         } catch {
             transcription = nil // DSP fallback inside the analyser
         }
-        let analysis = AudioAnalyzer.analyze(audio, transcription: transcription) { msg, f in progress(msg, 0.5 + 0.25 * f) }
+        let analysis = AudioAnalyzer.analyze(audio, transcription: transcription) { f, msg in progress(msg, 0.5 + 0.25 * f) }
         p.bpm = analysis.grid.bpm
         p.gridConfidence = analysis.grid.confidence
         p.melodySource = analysis.melodySource
@@ -135,7 +135,7 @@ enum Pipeline {
         return n * bar
     }
 
-    static func processScore(_ p: inout SongProject, score: Score, render: RenderSettings, progress: Progress) throws {
+    static func processScore(_ p: inout SongProject, score: Score, render: RenderSettings, progress: @escaping Progress) throws {
         let dir = ProjectStore.dir(p.id)
         guard !score.notes.isEmpty else { throw AppError.message("No playable notes were found in this score.") }
         try MIDIFile.write(score).write(to: dir.appendingPathComponent("score.mid"))
@@ -160,7 +160,7 @@ enum Pipeline {
         try generate(&p, features: features, progress: progress)
     }
 
-    static func renderScore(_ score: Score, leadIn: Double, render: RenderSettings, progress: @escaping (Double) -> Void) throws -> AudioBuffer {
+    static func renderScore(_ score: Score, leadIn: Double, render: RenderSettings, progress: @escaping (Double) -> Void) throws -> AudioSamples {
         if render.renderer == "Apple AUSampler" {
             var sfURL = SoundFontLibrary.bundledURL!
             if let c = render.customSoundFont { sfURL = ProjectStore.soundFontsDir.appendingPathComponent(c) }
@@ -175,7 +175,7 @@ enum Pipeline {
 
     // MARK: Charts
 
-    static func generate(_ p: inout SongProject, features: SongFeatures, progress: Progress) throws {
+    static func generate(_ p: inout SongProject, features: SongFeatures, progress: @escaping Progress) throws {
         progress("Designing charts", 0.92)
         let set = ChartGenerator.generate(features, options: p.options, title: p.title, artist: p.artist)
         var md = set.maidata
@@ -195,7 +195,7 @@ enum Pipeline {
     }
 
     /// Re-renders a score-based project with another renderer / instrument / soundfont.
-    static func rerender(_ p: inout SongProject, render: RenderSettings, progress: Progress) throws {
+    static func rerender(_ p: inout SongProject, render: RenderSettings, progress: @escaping Progress) throws {
         guard p.source != .audio else { return }
         let url = ProjectStore.file(p, "score.mid")
         let score = try MIDIFile.parse(data: Data(contentsOf: url), title: p.title)
@@ -228,7 +228,7 @@ enum Pipeline {
     }
 
     /// Creates the bundled demo project (used on first launch and for screenshots).
-    static func createDemo(render: RenderSettings, progress: Progress) throws -> SongProject {
+    static func createDemo(render: RenderSettings, progress: @escaping Progress) throws -> SongProject {
         guard let url = Bundle.main.url(forResource: "NeonSkyline", withExtension: "mid", subdirectory: "Demo") ?? Bundle.main.url(forResource: "NeonSkyline", withExtension: "mid") else {
             throw AppError.message("Demo song missing")
         }

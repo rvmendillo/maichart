@@ -14,7 +14,7 @@ enum AudioIO {
 
     /// Decodes an audio file. MP3s are decoded with minimp3 after removing the Xing/Info frame so the
     /// timeline is identical to what any MP3 decoder (including AstroDX's) produces.
-    static func decode(url: URL) throws -> AudioBuffer {
+    static func decode(url: URL) throws -> AudioSamples {
         if url.pathExtension.lowercased() == "mp3" {
             let data = try Data(contentsOf: url)
             return try MP3Decoder.decode(MP3Tools.removingInfoFrame(data).data).buffer
@@ -32,10 +32,10 @@ enum AudioIO {
         return audioBuffer(from: buf)
     }
 
-    static func audioBuffer(from buf: AVAudioPCMBuffer) -> AudioBuffer {
+    static func audioBuffer(from buf: AVAudioPCMBuffer) -> AudioSamples {
         let n = Int(buf.frameLength)
         let chans = Int(buf.format.channelCount)
-        var out = AudioBuffer(sampleRate: buf.format.sampleRate, channelCount: max(1, min(2, chans)), frames: n)
+        var out = AudioSamples(sampleRate: buf.format.sampleRate, channelCount: max(1, min(2, chans)), frames: n)
         if let data = buf.floatChannelData {
             for c in 0..<out.channelCount {
                 out.channels[c].withUnsafeMutableBufferPointer { dst in
@@ -46,7 +46,7 @@ enum AudioIO {
         return out
     }
 
-    static func pcmBuffer(from a: AudioBuffer) -> AVAudioPCMBuffer? {
+    static func pcmBuffer(from a: AudioSamples) -> AVAudioPCMBuffer? {
         let st = a.stereo()
         guard let fmt = AVAudioFormat(standardFormatWithSampleRate: st.sampleRate, channels: 2),
               let buf = AVAudioPCMBuffer(pcmFormat: fmt, frameCapacity: AVAudioFrameCount(st.frameCount)) else { return nil }
@@ -99,7 +99,7 @@ final class BasicPitchRunner {
         return shaped.scalars
     }
 
-    func transcribe(_ audio: AudioBuffer, progress: ((Double) -> Void)? = nil) throws -> [BasicPitch.NoteEvent] {
+    func transcribe(_ audio: AudioSamples, progress: ((Double) -> Void)? = nil) throws -> [BasicPitch.NoteEvent] {
         let mono = DSP.resample(audio.mono(), from: audio.sampleRate, to: BasicPitch.sampleRate)
         let windows = BasicPitch.windows(mono)
         var notes: [[Float]] = [], onsets: [[Float]] = []

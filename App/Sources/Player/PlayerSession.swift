@@ -77,7 +77,7 @@ final class PlayerSession: ObservableObject {
     private var processedEvents = 0
     private var startChartTime: Double = -2
 
-    init(chart: PlayChart, audio: AudioBuffer, first: Double, title: String, difficulty: Difficulty, level: String, settings: AppSettings, autoplay: Bool) {
+    init(chart: PlayChart, audio: AudioSamples, first: Double, title: String, difficulty: Difficulty, level: String, settings: AppSettings, autoplay: Bool) {
         self.chart = chart
         self.first = first
         self.title = title

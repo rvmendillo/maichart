@@ -1,7 +1,7 @@
 import Foundation
 
 /// Simple de-interleaved floating point audio container used throughout the engine.
-public struct AudioBuffer {
+public struct AudioSamples {
     public var sampleRate: Double
     /// One array per channel, all with identical length.
     public var channels: [[Float]]
@@ -85,7 +85,7 @@ public struct AudioBuffer {
     }
 
     /// Returns a copy with `frames` of silence prepended (positive) or frames removed from the start (negative).
-    public func shifted(byFrames frames: Int) -> AudioBuffer {
+    public func shifted(byFrames frames: Int) -> AudioSamples {
         var out = self
         for c in 0..<channelCount {
             if frames >= 0 {
@@ -106,18 +106,18 @@ public struct AudioBuffer {
         }
     }
 
-    public func slice(from start: Int, count: Int) -> AudioBuffer {
+    public func slice(from start: Int, count: Int) -> AudioSamples {
         let s = max(0, min(start, frameCount))
         let e = max(s, min(frameCount, s + count))
-        return AudioBuffer(sampleRate: sampleRate, channels: channels.map { Array($0[s..<e]) })
+        return AudioSamples(sampleRate: sampleRate, channels: channels.map { Array($0[s..<e]) })
     }
 
     /// Converts to stereo (duplicating mono or downmixing >2 channels).
-    public func stereo() -> AudioBuffer {
+    public func stereo() -> AudioSamples {
         if channelCount == 2 { return self }
-        if channelCount == 1 { return AudioBuffer(sampleRate: sampleRate, channels: [channels[0], channels[0]]) }
+        if channelCount == 1 { return AudioSamples(sampleRate: sampleRate, channels: [channels[0], channels[0]]) }
         let m = mono()
-        return AudioBuffer(sampleRate: sampleRate, channels: [m, m])
+        return AudioSamples(sampleRate: sampleRate, channels: [m, m])
     }
 
     /// Number of leading frames whose absolute value on every channel stays below `threshold`.

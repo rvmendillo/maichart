@@ -51,7 +51,7 @@ public enum AudioAlignment {
         return (best - 2 * maxLag) - maxLag
     }
 
-    public static func compare(reference: AudioBuffer, decoded: AudioBuffer, maxLagMilliseconds: Double = 120) -> AlignmentReport {
+    public static func compare(reference: AudioSamples, decoded: AudioSamples, maxLagMilliseconds: Double = 120) -> AlignmentReport {
         let ref = reference.mono()
         var dec = decoded.mono()
         if abs(decoded.sampleRate - reference.sampleRate) > 0.5 {
@@ -119,7 +119,7 @@ public enum TrackProducer {
 
     /// Encodes PCM to a 320 kbps CBR MP3 without an info tag. When the first ~25 ms are silent the
     /// encoder delay is removed up front so the decoded MP3 lines up sample-exactly with the WAV.
-    public static func makeMP3(from source: AudioBuffer, options: MP3Encoder.Options = MP3Encoder.Options(),
+    public static func makeMP3(from source: AudioSamples, options: MP3Encoder.Options = MP3Encoder.Options(),
                                progress: ((Double) -> Void)? = nil) throws -> Result {
         var pcm = source.channelCount > 2 ? source.stereo() : source
         // keep MP3 encoding from clipping: leave ~1 dB of headroom for codec overshoot

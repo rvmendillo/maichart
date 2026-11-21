@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import QuartzCore
 import MaiCore
 
@@ -184,7 +185,7 @@ enum TilesRenderer {
         let w = size.width, h = size.height
         let laneW = w / 4
         let hitY = h * 0.84
-        let speed = hitY / s.approach
+        let speed = Double(hitY) / s.approach
         let t = s.time
         for lane in 0..<4 {
             let r = CGRect(x: CGFloat(lane) * laneW, y: 0, width: laneW, height: h)

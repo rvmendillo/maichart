@@ -5,7 +5,7 @@ import MaiCore
 
 /// Renders PDF pages to 200 dpi grayscale bitmaps and runs MaiCore's optical music recognition.
 enum PDFScoreReader {
-    static func read(url: URL, progress: (Int, Double) -> Void) throws -> Score {
+    static func read(url: URL, progress: @escaping (Int, Double) -> Void) throws -> Score {
         guard let doc = PDFDocument(url: url) else { throw AppError.message("The PDF could not be opened.") }
         guard doc.pageCount > 0 else { throw AppError.message("The PDF has no pages.") }
         var pages: [GrayImage] = []

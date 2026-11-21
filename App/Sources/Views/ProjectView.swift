@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import MaiCore
 
 /// Everything needed to open the player or Piano Tiles for a project.

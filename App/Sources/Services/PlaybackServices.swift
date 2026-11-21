@@ -18,7 +18,7 @@ final class ChartAudio {
     private var pausedAudioTime: Double = 0
     var duration: Double = 0
 
-    init(audio: AudioBuffer) {
+    init(audio: AudioSamples) {
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .default, options: [])
         try? AVAudioSession.sharedInstance().setActive(true)
         buffer = AudioIO.pcmBuffer(from: audio)
@@ -114,10 +114,8 @@ enum HitSounds {
             let n = Int(seconds * sr)
             let b = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(n))!
             b.frameLength = AVAudioFrameCount(n)
-            var rng = SeededRandom(seed: 3)
             for i in 0..<n {
                 let t = Double(i) / sr
-                _ = rng
                 let v = Float(max(-1, min(1, f(t))))
                 b.floatChannelData![0][i] = v
                 b.floatChannelData![1][i] = v
@@ -125,17 +123,40 @@ enum HitSounds {
             return b
         }
         var noise = SeededRandom(seed: 11)
-        let noiseTable = (0..<Int(sr * 0.4)).map { _ in noise.unit() * 2 - 1 }
+        let noiseTable: [Double] = (0..<Int(sr * 0.7)).map { _ in noise.unit() * 2 - 1 }
         func nz(_ t: Double) -> Double { noiseTable[min(noiseTable.count - 1, Int(t * sr))] }
-        return [
-            "tap": buf(0.09) { t in (0.55 * sin(2 * .pi * 1760 * t) + 0.35 * nz(t)) * exp(-t * 55) },
-            "great": buf(0.09) { t in (0.45 * sin(2 * .pi * 1320 * t) + 0.3 * nz(t)) * exp(-t * 60) },
-            "break": buf(0.35) { t in (0.4 * sin(2 * .pi * 1046 * t) + 0.3 * sin(2 * .pi * 1568 * t) + 0.25 * sin(2 * .pi * 2093 * t) + 0.2 * nz(t) * exp(-t * 40)) * exp(-t * 9) },
-            "touch": buf(0.08) { t in (0.5 * sin(2 * .pi * 2349 * t) + 0.2 * nz(t)) * exp(-t * 60) },
-            "slide": buf(0.3) { t in 0.35 * nz(t) * exp(-t * 10) * (0.5 + 0.5 * sin(2 * .pi * 18 * t)) },
-            "firework": buf(0.6) { t in (0.45 * nz(t) * exp(-t * 6) + 0.3 * sin(2 * .pi * (600 + 900 * t) * t) * exp(-t * 5)) },
-            "miss": buf(0.05) { _ in 0 },
-        ]
+        let twoPi = 2.0 * Double.pi
+        var out: [String: AVAudioPCMBuffer] = [:]
+        out["tap"] = buf(0.09) { t in
+            let tone = 0.55 * sin(twoPi * 1760.0 * t)
+            return (tone + 0.35 * nz(t)) * exp(-t * 55.0)
+        }
+        out["great"] = buf(0.09) { t in
+            let tone = 0.45 * sin(twoPi * 1320.0 * t)
+            return (tone + 0.3 * nz(t)) * exp(-t * 60.0)
+        }
+        out["break"] = buf(0.35) { t in
+            let a = 0.4 * sin(twoPi * 1046.0 * t)
+            let b = 0.3 * sin(twoPi * 1568.0 * t)
+            let c = 0.25 * sin(twoPi * 2093.0 * t)
+            let n = 0.2 * nz(t) * exp(-t * 40.0)
+            return (a + b + c + n) * exp(-t * 9.0)
+        }
+        out["touch"] = buf(0.08) { t in
+            let tone = 0.5 * sin(twoPi * 2349.0 * t)
+            return (tone + 0.2 * nz(t)) * exp(-t * 60.0)
+        }
+        out["slide"] = buf(0.3) { t in
+            let wobble = 0.5 + 0.5 * sin(twoPi * 18.0 * t)
+            return 0.35 * nz(t) * exp(-t * 10.0) * wobble
+        }
+        out["firework"] = buf(0.6) { t in
+            let n = 0.45 * nz(t) * exp(-t * 6.0)
+            let sweep = 0.3 * sin(twoPi * (600.0 + 900.0 * t) * t) * exp(-t * 5.0)
+            return n + sweep
+        }
+        out["miss"] = buf(0.05) { _ in 0 }
+        return out
     }
 }
 
@@ -143,7 +164,7 @@ enum HitSounds {
 /// (channel, program) pair so mid-song program changes and drum channels never drop notes.
 enum AppleSamplerRenderer {
     static func render(score: Score, soundFontURL: URL, leadIn: Double, sampleRate: Double = 44100,
-                       instrumentOverride: Int? = nil, progress: ((Double) -> Void)? = nil) throws -> AudioBuffer {
+                       instrumentOverride: Int? = nil, progress: ((Double) -> Void)? = nil) throws -> AudioSamples {
         let engine = AVAudioEngine()
         let fmt = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 2)!
         try engine.enableManualRenderingMode(.offline, format: fmt, maximumFrameCount: 4096)
@@ -218,7 +239,7 @@ enum AppleSamplerRenderer {
             if cursor % (Int(sampleRate) * 5) < n { progress?(Double(cursor) / Double(total)) }
         }
         engine.stop()
-        var buf = AudioBuffer(sampleRate: sampleRate, channels: [left, right])
+        var buf = AudioSamples(sampleRate: sampleRate, channels: [left, right])
         let peak = buf.peak
         if peak > 1e-6 { buf.applyGain(0.84 / peak) }
         return buf
