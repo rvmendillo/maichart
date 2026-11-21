@@ -1,0 +1,87 @@
+name: iOS build
+
+on:
+  push:
+    branches: ["**"]
+  workflow_dispatch:
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  core-linux:
+    name: Core tests (Linux)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: swift-actions/setup-swift@v2
+        with:
+          swift-version: "6.1"
+      - name: Test MaiCore
+        working-directory: MaiCore
+        run: swift test 2>&1 | tail -n 200
+
+  ios:
+    name: Build unsigned IPA + simulator tests
+    runs-on: macos-15
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select newest Xcode
+        run: |
+          ls -d /Applications/Xcode*.app || true
+          XC=$(ls -d /Applications/Xcode_*.app | grep -v -i beta | sort -V | tail -n 1)
+          echo "Using $XC"
+          sudo xcode-select -s "$XC/Contents/Developer"
+          xcodebuild -version
+          xcrun simctl list runtimes | tail -n 5
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate project
+        run: xcodegen generate
+
+      - name: Build unsigned IPA (Release, device)
+        run: |
+          set -o pipefail
+          xcodebuild -project MaiChartStudio.xcodeproj -scheme MaiChartStudio \
+            -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            build 2>&1 | tee build-device.log | grep -E "error:|warning: unre|BUILD (SUCCEEDED|FAILED)" || true
+          test -d build/Build/Products/Release-iphoneos/MaiChartStudio.app
+          mkdir -p Payload ci-out
+          cp -R build/Build/Products/Release-iphoneos/MaiChartStudio.app Payload/
+          zip -qry ci-out/MaiChartStudio-unsigned.ipa Payload
+          ls -la ci-out
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: MaiChartStudio-unsigned-ipa
+          path: ci-out/MaiChartStudio-unsigned.ipa
+          if-no-files-found: error
+
+      - name: Simulator tests
+        run: |
+          set -o pipefail
+          DEV=$(xcrun simctl list devices available | grep -E "iPhone 1[5-9] Pro|iPhone 1[5-9]|iPhone 2[0-9]" | head -n 1 | sed -E 's/^ *([^(]+) \(.*/\1/' | sed 's/ *$//')
+          echo "Simulator: $DEV"
+          xcodebuild -project MaiChartStudio.xcodeproj -scheme MaiChartStudio \
+            -destination "platform=iOS Simulator,name=$DEV" -derivedDataPath build-sim \
+            test 2>&1 | tee test-sim.log | grep -E "error:|Test Case|Executed|TEST (SUCCEEDED|FAILED)" || true
+          grep -q "TEST SUCCEEDED" test-sim.log
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: logs
+          path: |
+            build-device.log
+            test-sim.log
+          if-no-files-found: ignore

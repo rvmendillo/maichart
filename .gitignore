@@ -1,0 +1,14 @@
+.DS_Store
+/build/
+/DerivedData/
+*.xcodeproj/
+*.xcworkspace/
+!*.xcworkspace/contents.xcworkspacedata
+.swiftpm/
+MaiCore/.build/
+MaiCore/Package.resolved
+*.ipa
+/Payload/
+/ci-out/
+__pycache__/
+*.pyc

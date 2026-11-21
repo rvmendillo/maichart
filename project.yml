@@ -1,0 +1,128 @@
+name: MaiChartStudio
+options:
+  bundleIdPrefix: com.rvmendillo
+  deploymentTarget:
+    iOS: "16.0"
+  createIntermediateGroups: true
+  developmentLanguage: en
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "2.0.0"
+    CURRENT_PROJECT_VERSION: "1"
+    DEVELOPMENT_TEAM: ""
+    CODE_SIGN_STYLE: Manual
+    ENABLE_USER_SCRIPT_SANDBOXING: NO
+    DEAD_CODE_STRIPPING: YES
+packages:
+  MaiCore:
+    path: MaiCore
+targets:
+  MaiChartStudio:
+    type: application
+    platform: iOS
+    sources:
+      - path: App/Sources
+      - path: App/Resources
+    dependencies:
+      - package: MaiCore
+        product: MaiCore
+    info:
+      path: App/Info.plist
+      properties:
+        CFBundleDisplayName: MaiChart Studio
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSRequiresIPhoneOS: true
+        UILaunchScreen: {}
+        UIApplicationSupportsIndirectInputEvents: true
+        UIFileSharingEnabled: true
+        LSSupportsOpeningDocumentsInPlace: true
+        UIRequiresFullScreen: false
+        UIStatusBarHidden: false
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        ITSAppUsesNonExemptEncryption: false
+        CFBundleDocumentTypes:
+          - CFBundleTypeName: Audio
+            LSHandlerRank: Alternate
+            LSItemContentTypes: [public.audio, public.mp3, public.mpeg-4-audio]
+          - CFBundleTypeName: MIDI
+            LSHandlerRank: Alternate
+            LSItemContentTypes: [public.midi-audio]
+          - CFBundleTypeName: MusicXML
+            LSHandlerRank: Alternate
+            LSItemContentTypes: [com.recordare.musicxml, com.recordare.musicxml.uncompressed, public.xml]
+          - CFBundleTypeName: PDF Score
+            LSHandlerRank: Alternate
+            LSItemContentTypes: [com.adobe.pdf]
+          - CFBundleTypeName: SoundFont
+            LSHandlerRank: Alternate
+            LSItemContentTypes: [public.data]
+        UTImportedTypeDeclarations:
+          - UTTypeIdentifier: com.recordare.musicxml
+            UTTypeDescription: Compressed MusicXML
+            UTTypeConformsTo: [public.data]
+            UTTypeTagSpecification:
+              public.filename-extension: [mxl]
+          - UTTypeIdentifier: com.recordare.musicxml.uncompressed
+            UTTypeDescription: MusicXML
+            UTTypeConformsTo: [public.xml]
+            UTTypeTagSpecification:
+              public.filename-extension: [musicxml]
+          - UTTypeIdentifier: com.soundblaster.soundfont
+            UTTypeDescription: SoundFont 2
+            UTTypeConformsTo: [public.data]
+            UTTypeTagSpecification:
+              public.filename-extension: [sf2]
+          - UTTypeIdentifier: com.astrodx.adx
+            UTTypeDescription: AstroDX Level Archive
+            UTTypeConformsTo: [public.zip-archive]
+            UTTypeTagSpecification:
+              public.filename-extension: [adx]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.rvmendillo.maichartstudio
+        PRODUCT_NAME: MaiChartStudio
+        TARGETED_DEVICE_FAMILY: "1,2"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        SWIFT_OPTIMIZATION_LEVEL: -O
+        CODE_SIGNING_ALLOWED: NO
+        CODE_SIGNING_REQUIRED: NO
+        CODE_SIGN_IDENTITY: ""
+      configs:
+        Debug:
+          SWIFT_OPTIMIZATION_LEVEL: -Onone
+  MaiChartStudioTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: App/Tests
+    dependencies:
+      - target: MaiChartStudio
+      - package: MaiCore
+        product: MaiCore
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: com.rvmendillo.maichartstudio.tests
+        TEST_HOST: $(BUILT_PRODUCTS_DIR)/MaiChartStudio.app/MaiChartStudio
+        BUNDLE_LOADER: $(TEST_HOST)
+schemes:
+  MaiChartStudio:
+    build:
+      targets:
+        MaiChartStudio: all
+        MaiChartStudioTests: [test]
+    test:
+      config: Debug
+      targets:
+        - MaiChartStudioTests
