@@ -6,7 +6,7 @@ import MaiCore
 /// What the user chose in the New chart sheet. The sheet closes first; the picker or job starts afterwards
 /// from the home screen, so progress and errors are never hidden behind the sheet.
 enum ImportRequest: Equatable {
-    case song, chart, link(String), demo
+    case song, chart, chartFolder, link(String), demo
     /// Used by automated screenshots: import a file without the system picker.
     case file(URL)
 }
@@ -20,6 +20,7 @@ struct HomeView: View {
     @State private var pendingRequest: ImportRequest? = nil
     @State private var pickerKind: ImportRequest = .song
     @State private var showPicker = false
+    @State private var showCopyPicker = false
     var initialScreen: String? = nil
 
     let columns = [GridItem(.adaptive(minimum: 300), spacing: 14)]
@@ -45,10 +46,17 @@ struct HomeView: View {
                     }
                     .padding(16)
                 }
-                .fileImporter(isPresented: $showPicker,
-                              allowedContentTypes: pickerKind == .chart ? ImportSheet.chartTypes : ImportSheet.songTypes,
-                              allowsMultipleSelection: pickerKind == .chart) { result in
+                // folders can only be opened in place; files are picked as local copies (below)
+                .fileImporter(isPresented: $showPicker, allowedContentTypes: [.folder], allowsMultipleSelection: true) { result in
                     handlePicked(result)
+                }
+                .sheet(isPresented: $showCopyPicker) {
+                    CopyingDocumentPicker(types: pickerKind == .chart ? ImportSheet.chartTypes : ImportSheet.songTypes,
+                                          multiple: pickerKind == .chart) { urls in
+                        showCopyPicker = false
+                        handlePicked(.success(urls))
+                    }
+                    .ignoresSafeArea()
                 }
             }
             .navigationDestination(for: SongProject.self) { p in
@@ -83,6 +91,9 @@ struct HomeView: View {
         switch request {
         case .song, .chart:
             pickerKind = request
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { showCopyPicker = true }
+        case .chartFolder:
+            pickerKind = .chartFolder
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { showPicker = true }
         case .link(let text):
             Task { if let p = await library.importLink(text) { path = [p] } }
@@ -101,12 +112,15 @@ struct HomeView: View {
             guard !urls.isEmpty else { return }
             let kind = pickerKind
             Task {
-                if kind == .chart {
+                if kind == .chart || kind == .chartFolder {
                     let imported = await library.importCharts(urls)
                     if imported.count == 1 { path = [imported[0]] }
                 } else if let p = await library.importFile(urls[0]) {
                     path = [p]
                 }
+                // local copies made by the picker live in our tmp folder; the project has its own copy now
+                let tmp = FileManager.default.temporaryDirectory.resolvingSymlinksInPath().path
+                for u in urls where u.resolvingSymlinksInPath().path.hasPrefix(tmp) { try? FileManager.default.removeItem(at: u) }
             }
         }
     }
@@ -228,7 +242,7 @@ struct ImportSheet: View {
     /// Folders (a level, a folder of levels, AstroDX's levels folder) and archives. `.data` keeps .adx files
     /// selectable even when another app (AstroDX) owns the .adx type.
     static let chartTypes: [UTType] = {
-        var t: [UTType] = [.folder, .zip, .data]
+        var t: [UTType] = [.zip, .data]
         if let u = UTType("com.astrodx.adx") { t.append(u) }
         if let u = UTType(filenameExtension: "adx") { t.append(u) }
         return t
@@ -243,7 +257,8 @@ struct ImportSheet: View {
                         source("Song audio", "MP3 · M4A · WAV · OGG · FLAC. MP3s are kept bit-exact; the beat grid and offset are detected automatically.", "waveform", MaiColor.pink, .song)
                         source("MIDI or MusicXML", "Exact notes and tempo. Rendered to a 320 kbps MP3 with the built-in SoundFont.", "pianokeys", MaiColor.cyan, .song)
                         source("PDF sheet music", "Printed scores are read with on-device optical music recognition, then rendered.", "doc.richtext", MaiColor.yellow, .song)
-                        source("maimai chart", "An AstroDX / Majdata level folder (maidata.txt + track.mp3/ogg + bg), a folder of levels, or .adx / .zip files — several at once. Play them here or send them to AstroDX.", "square.stack.3d.up.fill", MaiColor.violet, .chart)
+                        source("maimai chart (.adx / .zip)", "AstroDX / Majdata level archives — several at once. Play them here or send them to AstroDX.", "square.stack.3d.up.fill", MaiColor.violet, .chart)
+                        source("maimai chart folder", "A level folder (maidata.txt + track.mp3/ogg + bg) or a folder of levels, e.g. a copy of AstroDX's levels folder.", "folder.fill", MaiColor.violet, .chartFolder)
                         VStack(alignment: .leading, spacing: 8) {
                             SectionHeader(title: "From a link", icon: "link")
                             TextField("https://…/song.mp3", text: $link)
@@ -352,5 +367,31 @@ struct LicensesView: View {
             .navigationTitle("Licences")
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
         }
+    }
+}
+
+/// Document picker that imports a *local copy* of each picked file (asCopy: true): iOS copies it into the
+/// app's own tmp/Inbox, so reading it needs no security scope and iCloud files are downloaded first.
+struct CopyingDocumentPicker: UIViewControllerRepresentable {
+    let types: [UTType]
+    let multiple: Bool
+    let onPick: ([URL]) -> Void
+
+    func makeCoordinator() -> Coordinator { Coordinator(onPick: onPick) }
+
+    func makeUIViewController(context: Context) -> UIDocumentPickerViewController {
+        let vc = UIDocumentPickerViewController(forOpeningContentTypes: types, asCopy: true)
+        vc.allowsMultipleSelection = multiple
+        vc.delegate = context.coordinator
+        return vc
+    }
+
+    func updateUIViewController(_ vc: UIDocumentPickerViewController, context: Context) {}
+
+    final class Coordinator: NSObject, UIDocumentPickerDelegate {
+        let onPick: ([URL]) -> Void
+        init(onPick: @escaping ([URL]) -> Void) { self.onPick = onPick }
+        func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) { onPick(urls) }
+        func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) { onPick([]) }
     }
 }
